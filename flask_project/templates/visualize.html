@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Comprehensive Solar Visual Analytics</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<nav class="viz-nav" aria-label="Chart sections">
+  <a href="#distributions">Distributions (8)</a>
+  <a href="#standardized">Standardized (4)</a>
+  <a href="#correlations">Correlations</a>
+  <a href="#diurnal">Diurnal Curves</a>
+  <a href="#inverters">Inverter Rankings</a>
+</nav>
+
+{# ------------------------------------------------ distributions ----- #}
+<section class="viz-section" id="distributions">
+  <div class="section-head">
+    <h2 class="section-title">Distributions — 8 Key SCADA Features</h2>
+  </div>
+  <div class="chart-grid">
+    {% for col, hist in bundle.histograms.items() if hist.labels %}
+    <div class="chart-card">
+      <div class="chart-card-head">
+        <h3>{{ col }}</h3>
+        <span class="chart-tag">μ {{ hist.mean }} · σ {{ hist.std }}</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas data-chart="hist" data-key="{{ col }}" role="img"
+                aria-label="Histogram of {{ col }}"></canvas>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ------------------------------------------------ standardized ------ #}
+<section class="viz-section" id="standardized">
+  <div class="section-head">
+    <h2 class="section-title">Z-Score Standardized Feature Distributions</h2>
+  </div>
+  <p class="section-sub">Meteorological variables re-centred at mean 0 and scaled to unit variance — ready for modeling.</p>
+  <div class="chart-grid">
+    {% for col, hist in bundle.standardized.items() if hist.labels %}
+    <div class="chart-card">
+      <div class="chart-card-head">
+        <h3>{{ col }} <span class="std-badge">z</span></h3>
+        <span class="chart-tag">μ {{ hist.mean }} · σ {{ hist.std }}</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas data-chart="std" data-key="{{ col }}" role="img"
+                aria-label="Standardized distribution of {{ col }}"></canvas>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ------------------------------------------------ correlations ------ #}
+<section class="viz-section" id="correlations">
+  <div class="section-head">
+    <h2 class="section-title">Correlation Matrix Heatmap</h2>
+  </div>
+  <p class="section-sub">Pairwise correlations across all numerical generation and weather telemetry channels.</p>
+  <div class="heat-scroll">
+    <div class="heat-grid" style="--n: {{ bundle.heatmap.labels | length }}">
+      <div></div>
+      {% for c in bundle.heatmap.labels %}
+      <div class="heat-col-label"><span>{{ c }}</span></div>
+      {% endfor %}
+      {% for r in bundle.heatmap.labels %}
+      <div class="heat-row-label">{{ r }}</div>
+      {% for cell in bundle.heatmap.matrix[loop.index0] %}
+      <div class="heat-cell {{ 'heat-strong' if cell.strong else '' }}"
+           style="background: {{ cell.color }}"
+           title="{{ r }} × {{ bundle.heatmap.labels[loop.index0] }}: {{ cell.v }}">{{ cell.v if cell.v is not none else '' }}</div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+    <div class="heat-legend">
+      <span>-1.0</span>
+      <span class="heat-legend-bar"></span>
+      <span>+1.0</span>
+    </div>
+  </div>
+
+  <div class="chart-card chart-card-wide mt-36">
+    <div class="chart-card-head">
+      <h3>Influence on Target: AC Power Generation</h3>
+      <span class="chart-tag">correlation coefficient</span>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas data-chart="influence" role="img" aria-label="Influence bar chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ------------------------------------------------ diurnal ----------- #}
+<section class="viz-section" id="diurnal">
+  <div class="section-head">
+    <h2 class="section-title">Diurnal Solar Generation vs Irradiance Profile</h2>
+  </div>
+
+  <div class="chart-card chart-card-wide">
+    <div class="chart-card-head">
+      <h3>24-Hour Diurnal Tracking (34-Day Hourly Mean)</h3>
+      <span class="chart-tag">dual-axis tracking</span>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas data-chart="diurnal" role="img" aria-label="Diurnal solar curve"></canvas>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ------------------------------------------------ inverters --------- #}
+<section class="viz-section" id="inverters">
+  <div class="section-head">
+    <h2 class="section-title">Inverter Performance Index (IPI) & Diagnostics</h2>
+  </div>
+  <p class="section-sub">Pinpoints localized string failures and panel soiling by benchmarking each inverter's average daily yield against the plant median.</p>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Inverter Serial</th>
+          <th class="num">Daily Yield</th>
+          <th class="num">Peak AC</th>
+          <th class="num">Daylight AC</th>
+          <th class="num">Efficiency</th>
+          <th class="num">IPI Score</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in bundle.inverters %}
+        <tr>
+          <td class="strong mono">{{ inv.inverter_id }}</td>
+          <td class="num">{{ inv.avg_daily_yield }} kWh</td>
+          <td class="num">{{ inv.max_ac_kw }} kW</td>
+          <td class="num">{{ inv.avg_day_ac_kw }} kW</td>
+          <td class="num">{{ inv.avg_efficiency }}%</td>
+          <td class="num accent"><strong>{{ inv.ipi }}%</strong></td>
+          <td>
+            {% if inv.status == 'Healthy' %}
+            <span class="badge badge-accent">Healthy</span>
+            {% elif inv.status == 'Moderate Loss' %}
+            <span class="badge" style="background: rgba(217, 166, 63, 0.2); color: #D9A63F;">Moderate Loss</span>
+            {% else %}
+            <span class="badge" style="background: rgba(198, 93, 85, 0.15); color: #C65D55;">Fault / Soiling</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  window.SOLAR_DATA = {
+    histograms: {{ bundle.histograms | tojson }},
+    standardized: {{ bundle.standardized | tojson }},
+    influence: {{ bundle.influence | tojson }},
+    diurnal: {{ bundle.diurnal | tojson }}
+  };
+</script>
+
+{% include "_pager.html" %}
+{% endblock %}

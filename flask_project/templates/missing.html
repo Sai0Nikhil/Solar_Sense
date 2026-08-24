@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Telemetry Continuity & Imputation Lab</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="metrics">
+    <div class="metric">
+      <span class="metric-value">{{ bundle.imputation_lab.total_expected_intervals }}</span>
+      <span class="metric-label">Expected 15-min Intervals</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value {{ 'text-danger' if bundle.imputation_lab.missing_timestamps_count else '' }}">{{ bundle.imputation_lab.missing_timestamps_count }}</span>
+      <span class="metric-label">Missing Intervals</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.imputation_lab.coverage_pct }}%</span>
+      <span class="metric-label">Telemetry Coverage</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">3</span>
+      <span class="metric-label">Strategies Benchmarked</span>
+    </div>
+  </div>
+
+  <div class="chart-card mt-36">
+    <div class="chart-card-head">
+      <h3>Imputation Benchmark — Reconstruction Error by Strategy</h3>
+      <span class="chart-tag">10% daylight dropout · RMSE (lower is better)</span>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas data-chart="imputation_benchmark" role="img" aria-label="Imputation benchmark bar chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Imputation Algorithm Benchmark (Ground Truth Holdout)</h2>
+  </div>
+  <p class="section-sub">Tested against ground truth daylight telemetry to determine the optimal imputation strategy for solar irradiance and thermal sensors.</p>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Sensor Channel</th>
+          <th>Observed Mean</th>
+          <th class="num">Forward Fill MAE</th>
+          <th class="num">Forward Fill RMSE</th>
+          <th class="num">Linear Interp MAE</th>
+          <th class="num">Linear Interp RMSE</th>
+          <th class="num">Diurnal MAE</th>
+          <th class="num">Diurnal RMSE</th>
+          <th>Winning Strategy</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sensor, res in bundle.imputation_lab.metrics_by_sensor.items() %}
+        <tr>
+          <td class="strong">{{ sensor }}</td>
+          <td class="dim">{{ res.mean }} ± {{ res.std }}</td>
+          <td class="num">{{ res.forward_fill.mae }}</td>
+          <td class="num">{{ res.forward_fill.rmse }}</td>
+          <td class="num accent">{{ res.linear_interp.mae }}</td>
+          <td class="num accent"><strong>{{ res.linear_interp.rmse }}</strong></td>
+          <td class="num">{{ res.diurnal_pattern.mae }}</td>
+          <td class="num">{{ res.diurnal_pattern.rmse }}</td>
+          <td><span class="badge badge-accent">{{ res.best_strategy }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-head mt-36">
+    <h2 class="section-title">Repair — Time Linear Spline Imputation</h2>
+  </div>
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Stream Channel</th>
+          <th class="num">Missing Gaps</th>
+          <th class="num">% of Intervals</th>
+          <th>Applied Method</th>
+          <th>Coverage Progression</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in bundle.imputation_lab.affected %}
+        <tr>
+          <td class="mono strong">{{ col.name }}</td>
+          <td class="num">{{ col.count }}</td>
+          <td class="num dim">{{ col.pct }}%</td>
+          <td class="accent strong">{{ col.impute_method }}</td>
+          <td>
+            <span class="coverage">
+              <span class="coverage-track"><span class="coverage-fill" style="--w: {{ col.non_null_pct }}%"></span></span>
+              <span class="coverage-pct">{{ col.non_null_pct }}% → 100%</span>
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="note"><strong>Policy Decision:</strong> Time Linear Spline Interpolation is used for short gaps (<= 1 hour) and Diurnal Solar Matching for prolonged multi-hour outages.</p>
+</section>
+
+<script>
+  window.SOLAR_DATA = {
+    imputation_lab: {{ bundle.imputation_lab | tojson }}
+  };
+</script>
+
+{% include "_pager.html" %}
+{% endblock %}

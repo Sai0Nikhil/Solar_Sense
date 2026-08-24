@@ -1,0 +1,17 @@
+<nav class="page-nav" aria-label="Stage pagination">
+  {% if prev_step %}
+  <a href="{{ url_for(prev_step.endpoint) }}" class="page-nav-link page-nav-prev">
+    <span class="page-nav-dir">← Previous</span>
+    <span class="page-nav-label">{{ prev_step.step }} {{ prev_step.label }}</span>
+  </a>
+  {% else %}
+  <div></div>
+  {% endif %}
+
+  {% if next_step %}
+  <a href="{{ url_for(next_step.endpoint) }}" class="page-nav-link page-nav-next">
+    <span class="page-nav-dir">Next →</span>
+    <span class="page-nav-label">{{ next_step.step }} {{ next_step.label }}</span>
+  </a>
+  {% endif %}
+</nav>

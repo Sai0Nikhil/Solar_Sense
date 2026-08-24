@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Sub-hourly Inverter Power Inference</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="predict-layout">
+    
+    <form method="POST" class="predict-form">
+      <fieldset class="predict-fieldset">
+        <legend>Algorithm Selection</legend>
+        <div class="predict-fields">
+          <label class="field" style="grid-column: span 2;">
+            <span class="field-label">Model Architecture</span>
+            <select name="model_name" class="field-input">
+              {% for m in mb.models %}
+              <option value="{{ m.name }}" {% if selected_model == m.name %}selected{% endif %}>
+                {{ m.name }} (R²: {{ m.metrics.r2 }})
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="predict-fieldset">
+        <legend>Meteorological & Temporal Inputs</legend>
+        <div class="predict-fields">
+          {% for f in mb.form_meta %}
+          <label class="field">
+            <span class="field-label">{{ f.name }}</span>
+            <input type="number" step="{{ f.step }}" name="{{ f.name }}" class="field-input"
+                   value="{{ values.get(f.name, f.default) }}" min="{{ f.min }}" max="{{ f.max }}">
+            <span class="field-hint">{{ f.min }}–{{ f.max }} · default {{ f.default }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Forecast AC Power Output</button>
+    </form>
+
+    <aside class="predict-result" aria-live="polite">
+      {% if result %}
+      <div class="result-panel result-placed">
+        <span class="result-kicker">{{ result.model_used }}</span>
+        <span class="result-verdict">{{ result.ac_power_kw }} <span style="font-size: 16px;">kW</span></span>
+        <div class="result-meta">
+          <span class="mono">Estimated 15-min Yield: {{ result.daily_yield_est_kwh }} kWh</span>
+        </div>
+      </div>
+
+      <div class="explanations-panel mt-20">
+        <h4 class="section-title-sm mb-12" style="font-weight: 600; color: var(--text); font-size: 13px;">Why this forecast? (Feature Contributions)</h4>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          {% for exp in result.explanations %}
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px;">
+            <div>
+              <strong>{{ exp.feature }}</strong>: <span class="mono accent">{{ exp.value }}</span>
+            </div>
+            <div class="mono" style="font-weight: 600; color: {% if exp.contribution >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+              {% if exp.contribution >= 0 %}+{% endif %}{{ exp.contribution }} kW
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+      <div class="card" style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 240px; text-align: center; color: var(--text-3);">
+        <p>Adjust environmental inputs and submit to generate power predictions.</p>
+      </div>
+      {% endif %}
+    </aside>
+
+  </div>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}

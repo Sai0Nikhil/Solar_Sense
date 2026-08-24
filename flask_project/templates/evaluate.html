@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Assessed on {{ "{:,}".format(mb.split.test_rows) }} sealed holdout rows</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Sealed Test Set Performance</h2>
+  </div>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th class="num">R² Score</th>
+          <th class="num">MAE (kW)</th>
+          <th class="num">RMSE (kW)</th>
+          <th class="num">Daylight MAPE</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mb.models %}
+        <tr class="{{ 'champion-row' if m.name == mb.best else '' }}">
+          <td class="strong">
+            {{ m.name }}
+            {% if m.name == mb.best %}<span class="badge badge-accent badge-offset">Champion</span>{% endif %}
+          </td>
+          <td class="num accent"><strong>{{ m.metrics.r2 }}</strong></td>
+          <td class="num">{{ m.metrics.mae_kw }} kW</td>
+          <td class="num">{{ m.metrics.rmse_kw }} kW</td>
+          <td class="num">{{ m.metrics.mape_pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Feature Attribution & Permutation Importance</h2>
+  </div>
+  <div class="chart-card">
+    <div class="chart-wrap" style="height: 300px;">
+      <canvas data-chart="importance" role="img" aria-label="Feature importance bar chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.SOLAR_DATA = {
+    importance: {{ mb.importance | tojson }}
+  };
+</script>
+
+{% include "_pager.html" %}
+{% endblock %}

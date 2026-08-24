@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Classical ML Algorithms for AC Power Regression</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">The Candidates</h2>
+  </div>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Model Architecture</th>
+          <th>Inductive Bias & Role</th>
+          <th>Preprocessing</th>
+          <th class="num">Train Time</th>
+          <th class="num">Holdout R²</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mb.models %}
+        <tr class="{{ 'champion-row' if m.name == mb.best else '' }}">
+          <td class="strong">
+            {{ m.name }}
+            {% if m.name == mb.best %}<span class="badge badge-accent badge-offset">Champion</span>{% endif %}
+          </td>
+          <td class="dim cell-role">{{ m.note }}</td>
+          <td class="dim">{{ 'z-scored' if m.needs_scaling else 'raw features' }}</td>
+          <td class="num">{{ m.train_time }}s</td>
+          <td class="num accent"><strong>{{ m.metrics.r2 }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="note">The champion model is selected based on out-of-sample temporal holdout generalization. Full regression metrics on the next page.</p>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}

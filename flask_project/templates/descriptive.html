@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Daytime vs. Nighttime Distribution Breakdown</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Parametric Summary by Operating Cycle</h2>
+  </div>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Metric / Sensor Channel</th>
+          <th class="num">Overall Mean</th>
+          <th class="num">Overall Std</th>
+          <th class="num">Daytime Mean</th>
+          <th class="num">Daytime Max</th>
+          <th class="num">Night Mean</th>
+          <th class="num">Min</th>
+          <th class="num">Max</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in bundle.descriptive %}
+        <tr>
+          <td class="strong">{{ s.name }}</td>
+          <td class="num">{{ s.overall_mean }}</td>
+          <td class="num">{{ s.overall_std }}</td>
+          <td class="num accent"><strong>{{ s.day_mean }}</strong></td>
+          <td class="num">{{ s.day_max }}</td>
+          <td class="num dim">{{ s.night_mean }}</td>
+          <td class="num">{{ s.overall_min }}</td>
+          <td class="num">{{ s.overall_max }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Daytime hours isolate active photovoltaic generation (G > 0 or 06:00 to 18:00), preventing night zero-inflation from distorting regression scales.</p>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}

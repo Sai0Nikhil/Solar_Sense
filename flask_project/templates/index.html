@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Overview · SolarSense System{% endblock %}
+
+{% block content %}
+<section class="home-head">
+  <div>
+    <p class="page-kicker">Overview</p>
+    <h1>SolarSense Intelligence System</h1>
+    <p class="page-desc">
+      A nine-stage SCADA intelligence and machine-learning pipeline over
+      <strong>{{ "{:,}".format(bundle.overview.total_records) }}</strong> synchronized telemetry records across 22 string inverters —
+      meteorological tracking, time-series imputation, and photovoltaic power forecasting.
+    </p>
+    <div class="page-actions">
+      <a href="{{ url_for('upload_dataset') }}" class="btn btn-primary">Start the pipeline</a>
+      <a href="{{ url_for('visualizations') }}" class="btn btn-secondary">Explore the data</a>
+    </div>
+  </div>
+
+  <aside class="panel" aria-label="Active solar farm">
+    <div class="panel-head">
+      <span class="panel-title">Active Solar Plant</span>
+      <span class="badge badge-accent">Plant {{ plant_num }}</span>
+    </div>
+    <div class="panel-body">
+      <span class="dataset-file">Plant_{{ plant_num }}_SCADA_Merged</span>
+      <dl class="dataset-facts">
+        <div class="dataset-fact"><dt>Plant ID</dt><dd>{{ bundle.overview.plant_id }}</dd></div>
+        <div class="dataset-fact"><dt>Inverters</dt><dd>{{ bundle.overview.n_inverters }} Strings</dd></div>
+        <div class="dataset-fact"><dt>Observation</dt><dd>{{ bundle.overview.days_span }} Days</dd></div>
+        <div class="dataset-fact"><dt>Coverage</dt><dd>{{ bundle.overview.completeness }}%</dd></div>
+      </dl>
+      <a href="{{ url_for('upload_dataset') }}" class="section-link">Switch solar farm →</a>
+    </div>
+  </aside>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section" id="dataset-overview">
+  <div class="section-head">
+    <h2 class="section-title">Telemetry Overview & Plant KPIs</h2>
+    <span class="mono dim mono-sm">22 Inverters Synchronized · {{ "{:,}".format(bundle.overview.total_records) }} intervals</span>
+  </div>
+
+  <div class="metrics metrics-rows">
+    <div class="metric">
+      <span class="metric-value">{{ "{:,}".format(bundle.overview.total_records) }}</span>
+      <span class="metric-label">SCADA Records</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value accent">{{ bundle.overview.peak_ac_kw }} kW</span>
+      <span class="metric-label">Peak AC Power</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.avg_day_ac_kw }} kW</span>
+      <span class="metric-label">Daylight Mean Power</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.avg_daily_yield_kwh }} kWh</span>
+      <span class="metric-label">Daily Yield / Inverter</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.avg_efficiency }}%</span>
+      <span class="metric-label">Inverter Efficiency</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.max_irradiation }} kW/m²</span>
+      <span class="metric-label">Peak Irradiance</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.max_module_temp }} °C</span>
+      <span class="metric-label">Max Module Temp</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value {{ 'text-danger' if bundle.imputation_lab.missing_timestamps_count else '' }}">{{ bundle.imputation_lab.missing_timestamps_count }}</span>
+      <span class="metric-label">Missing Intervals</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Pipeline Stages</h2>
+  </div>
+  <p class="section-sub">Follow the left sidebar navigation to step through the 9 engineering stages from raw sensor intake to machine-learning power forecasting.</p>
+</section>
+{% endblock %}

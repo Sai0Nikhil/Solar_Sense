@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Active Plant · Plant {{ plant_num }} · ID {{ bundle.overview.plant_id }}</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Select Active Solar Farm Telemetry</h2>
+  </div>
+
+  <div class="card-grid">
+    <div class="card {{ 'card-active' if plant_num == 1 else '' }}" style="padding: 24px; border: {% if plant_num == 1 %}2px solid var(--accent){% else %}1px solid var(--border){% endif %};">
+      <p class="card-kicker">Solar Farm 1</p>
+      <h3 style="margin: 6px 0 10px; font-size: 17px;">Plant 1 (ID: 4135001)</h3>
+      <p style="color: var(--text-2); font-size: 13px; margin-bottom: 18px; line-height: 1.6;">
+        68,774 synchronized records across 22 string inverters. Contains 82 missing weather sensor intervals (97.49% coverage) requiring time-series imputation.
+      </p>
+      <a href="{{ url_for('switch_plant', num=1) }}" class="btn {% if plant_num == 1 %}btn-primary{% else %}btn-secondary{% endif %}">
+        {% if plant_num == 1 %}✓ Currently Active{% else %}Switch to Plant 1{% endif %}
+      </a>
+    </div>
+
+    <div class="card {{ 'card-active' if plant_num == 2 else '' }}" style="padding: 24px; border: {% if plant_num == 2 %}2px solid var(--accent){% else %}1px solid var(--border){% endif %};">
+      <p class="card-kicker">Solar Farm 2</p>
+      <h3 style="margin: 6px 0 10px; font-size: 17px;">Plant 2 (ID: 4136001)</h3>
+      <p style="color: var(--text-2); font-size: 13px; margin-bottom: 18px; line-height: 1.6;">
+        67,698 synchronized records across 22 string inverters. Calibrated 1:1 DC-to-AC telemetry with 99.85% sensor coverage (5 missing intervals).
+      </p>
+      <a href="{{ url_for('switch_plant', num=2) }}" class="btn {% if plant_num == 2 %}btn-primary{% else %}btn-secondary{% endif %}">
+        {% if plant_num == 2 %}✓ Currently Active{% else %}Switch to Plant 2{% endif %}
+      </a>
+    </div>
+  </div>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}

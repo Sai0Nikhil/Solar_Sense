@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Physics Feature Extraction & Temporal Validation Split</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Data Preprocessing & Physics Feature Engineering</h2>
+  </div>
+
+  <div class="card-grid">
+    <div class="card" style="padding: 24px;">
+      <p class="card-kicker">Physics Features</p>
+      <h3 style="font-size: 16px; margin: 8px 0;">Thermal Delta (&Delta;T)</h3>
+      <p style="color: var(--text-2); font-size: 13px; line-height: 1.6;">
+        &Delta;T = Module Temp - Ambient Temp. Captures photovoltaic thermal saturation stress and cell heating loss (&asymp; 0.4%/&deg;C power degradation).
+      </p>
+    </div>
+
+    <div class="card" style="padding: 24px;">
+      <p class="card-kicker">Temporal Features</p>
+      <h3 style="font-size: 16px; margin: 8px 0;">Diurnal Solar Angles</h3>
+      <p style="color: var(--text-2); font-size: 13px; line-height: 1.6;">
+        Hour &isin; [0, 23] and Minute &isin; [0, 45] encoded to model the sun's elevation angle and diurnal trajectory.
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Validation Protocol: Temporal 80/20 Holdout</h2>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-label">Training Partition</span>
+      <span class="stat-val accent">80% Past</span>
+      <span class="stat-note">Chronological training set</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Sealed Holdout</span>
+      <span class="stat-val accent">20% Future</span>
+      <span class="stat-note">Zero temporal leakage</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Sampling Granularity</span>
+      <span class="stat-val">15 Minutes</span>
+      <span class="stat-note">SCADA synchronized</span>
+    </div>
+  </div>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}

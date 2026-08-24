@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <p class="page-kicker">{{ step.eyebrow }}</p>
+  <h1>{{ step.label }}</h1>
+  <p class="page-desc">{{ step.note }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · {{ bundle.features.registry|length }} channels · 22 inverters</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Telemetry Sensor Channels & Data Dictionary</h2>
+  </div>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Channel Name</th>
+          <th>Group</th>
+          <th>Role</th>
+          <th>Data Type</th>
+          <th class="num">Non-Null Count</th>
+          <th class="num">Coverage</th>
+          <th>Description & Physical Unit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in bundle.features.registry %}
+        <tr>
+          <td class="strong">{{ f.name }}</td>
+          <td><span class="badge badge-accent">{{ f.group }}</span></td>
+          <td class="dim cell-role">{{ f.role }}</td>
+          <td class="mono num dim">{{ f.dtype }}</td>
+          <td class="num">{{ "{:,}".format(f.non_null) }}</td>
+          <td class="num">{{ f.non_null_pct }}%</td>
+          <td style="color: var(--text-2); font-size: 12.5px;">{{ f.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Connected Inverter Network (22 String Inverters)</h2>
+  </div>
+  <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+    {% for inv in bundle.features.inverters_list %}
+    <div class="card" style="padding: 12px 14px;">
+      <span class="mono accent" style="font-size: 11.5px; display: block;">{{ inv }}</span>
+      <span class="dim" style="font-size: 10.5px;">String Inverter</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% include "_pager.html" %}
+{% endblock %}
