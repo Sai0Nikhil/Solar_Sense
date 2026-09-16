@@ -6,6 +6,8 @@ Trains and evaluates:
 3. HistGradientBoosting Regressor (Champion)
 
 Uses temporal 80/20 chronological train/test split to prevent leakage.
+Weather data is first passed through eda.impute_weather_gaps() so all
+training rows have complete sensor streams.
 """
 
 import os
@@ -19,7 +21,6 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
 
 import eda
 
@@ -43,7 +44,7 @@ _all_fitted_cache = OrderedDict()
 _cache_lock = threading.Lock()
 _CACHE_MAX = 4
 
-ARTIFACT_VERSION = 1
+ARTIFACT_VERSION = 2  # bumped: imputation is now applied before training
 
 
 def _artifact_path(plant_num=1, data_dir=None):
@@ -59,9 +60,13 @@ def _f(v, nd=3):
 
 
 def train_and_evaluate(plant_num=1, data_dir=None):
-    """Train all models on chronological 80/20 split and return evaluation payload."""
+    """Train all models on chronological 80/20 split with imputed data."""
     gen_df, wth_df = eda.load_raw_plant(plant_num, data_dir)
-    df = eda.merge_and_enrich(gen_df, wth_df, plant_num)
+
+    # Apply 3-tier imputation before merging
+    wth_imputed, gap_audit, _ = eda.impute_weather_gaps(wth_df)
+
+    df = eda.merge_and_enrich(gen_df, wth_imputed, plant_num)
     df = df.sort_values("DATE_TIME").reset_index(drop=True)
 
     # Filter daylight hours for meaningful regression (avoid trivial night zeros)
@@ -99,16 +104,20 @@ def train_and_evaluate(plant_num=1, data_dir=None):
         train_time = time.time() - t0
 
         preds = reg.predict(te)
-        # Power cannot be negative physically
-        preds = np.clip(preds, 0, None)
+        preds = np.clip(preds, 0, None)  # power cannot be negative physically
 
         r2 = float(r2_score(y_test, preds))
         mae = float(mean_absolute_error(y_test, preds))
         rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
-        
+
         # Daylight MAPE on active power > 10 kW
         mask_active = y_test > 10
         mape = float(np.mean(np.abs((y_test[mask_active] - preds[mask_active]) / y_test[mask_active])) * 100) if mask_active.sum() > 0 else 0.0
+
+        # Scatter: sample up to 300 points for the predict-vs-actual chart
+        sample_idx = np.linspace(0, len(y_test) - 1, min(300, len(y_test)), dtype=int)
+        scatter_actual = [round(float(v), 2) for v in y_test.iloc[sample_idx]]
+        scatter_pred = [round(float(v), 2) for v in preds[sample_idx]]
 
         models.append({
             "name": name,
@@ -120,11 +129,15 @@ def train_and_evaluate(plant_num=1, data_dir=None):
                 "mae_kw": _f(mae, 2),
                 "rmse_kw": _f(rmse, 2),
                 "mape_pct": _f(mape, 2)
+            },
+            "scatter": {
+                "actual": scatter_actual,
+                "pred": scatter_pred,
             }
         })
         fitted[name] = (reg, needs_scaling)
 
-    # Best model by highest test R2
+    # Best model by highest test R²
     best = max(models, key=lambda m: m["metrics"]["r2"])
     best_name = best["name"]
     best_reg, best_scaled = fitted[best_name]
@@ -132,7 +145,7 @@ def train_and_evaluate(plant_num=1, data_dir=None):
     # Feature Importance (Random Forest)
     rf_reg = fitted["Random Forest"][0]
     importances = pd.Series(rf_reg.feature_importances_, index=FEATURES).sort_values(ascending=False)
-    
+
     # Linear baseline coefficients for fast explanation surrogate
     ridge_reg = fitted["Ridge Regression"][0]
     ridge_export = {
@@ -156,6 +169,13 @@ def train_and_evaluate(plant_num=1, data_dir=None):
             "step": "1" if col in ("HOUR", "MINUTE") else "0.01"
         })
 
+    # Gap stats summary for evaluation page
+    gap_stats = {
+        "total_gaps": len(gap_audit),
+        "imputed_slots": sum(g["n_slots"] for g in gap_audit),
+        "imputation_applied": True,
+    }
+
     bundle = {
         "schema_ok": True,
         "ok": True,
@@ -174,7 +194,8 @@ def train_and_evaluate(plant_num=1, data_dir=None):
             "values": [round(float(v), 4) for v in importances.values]
         },
         "ridge_export": ridge_export,
-        "form_meta": form_meta
+        "form_meta": form_meta,
+        "gap_stats": gap_stats,
     }
 
     # Cache fitted champion
@@ -205,7 +226,7 @@ def save_artifact(plant_num=1, data_dir=None):
 
 
 def get_model_bundle(plant_num=1, data_dir=None):
-    """Retrieve model bundle from cache or artifact."""
+    """Retrieve model bundle from cache or artifact (trains on first call)."""
     key = (plant_num, data_dir)
     with _cache_lock:
         if key not in _bundle_cache:
@@ -228,7 +249,7 @@ def predict(values, model_name=None, plant_num=1, data_dir=None):
     """Predict AC Power output in kW for given environmental/sensor inputs."""
     bundle = get_model_bundle(plant_num, data_dir)
     key = (plant_num, data_dir)
-    
+
     with _cache_lock:
         all_fitted = _all_fitted_cache.get(key)
         champion_fitted = _fitted_cache.get(key)
@@ -239,7 +260,6 @@ def predict(values, model_name=None, plant_num=1, data_dir=None):
         reg, scaler, means = champion_fitted
         model_name = bundle["best"]
     else:
-        # Fallback train
         train_and_evaluate(plant_num, data_dir)
         reg, scaler, means = _fitted_cache[key]
         model_name = bundle["best"]
@@ -277,6 +297,6 @@ def predict(values, model_name=None, plant_num=1, data_dir=None):
         "ac_power_kw": round(pred_kw, 2),
         "daily_yield_est_kwh": round(pred_kw * 0.25, 2),  # approx 15-min energy slice
         "model_used": model_name or bundle["best"],
-        "r2_score": next((m["metrics"]["r2"] for m in bundle["models"] if m["name"] == model_name), 0.98),
+        "r2_score": next((m["metrics"]["r2"] for m in bundle["models"] if m["name"] == model_name), None),
         "explanations": explanations
     }

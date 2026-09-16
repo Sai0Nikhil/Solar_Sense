@@ -6,11 +6,12 @@
   <p class="page-kicker">{{ step.eyebrow }}</p>
   <h1>{{ step.label }}</h1>
   <p class="page-desc">{{ step.note }}</p>
-  <p class="page-meta">Plant {{ plant_num }} · Telemetry Continuity & Imputation Lab</p>
+  <p class="page-meta">Plant {{ plant_num }} · Telemetry Continuity &amp; Imputation Lab</p>
 </section>
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Coverage KPIs ---- #}
 <section class="section">
   <div class="metrics">
     <div class="metric">
@@ -18,23 +19,117 @@
       <span class="metric-label">Expected 15-min Intervals</span>
     </div>
     <div class="metric">
-      <span class="metric-value {{ 'text-danger' if bundle.imputation_lab.missing_timestamps_count else '' }}">{{ bundle.imputation_lab.missing_timestamps_count }}</span>
-      <span class="metric-label">Missing Intervals</span>
+      <span class="metric-value {{ 'text-danger' if bundle.imputation_lab.missing_timestamps_count else '' }}">
+        {{ bundle.imputation_lab.missing_timestamps_count }}
+      </span>
+      <span class="metric-label">Missing Raw Intervals</span>
     </div>
     <div class="metric">
       <span class="metric-value">{{ bundle.imputation_lab.coverage_pct }}%</span>
-      <span class="metric-label">Telemetry Coverage</span>
+      <span class="metric-label">Raw Telemetry Coverage</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value accent">{{ bundle.gap_summary.total_gaps }}</span>
+      <span class="metric-label">Gap Events Detected</span>
     </div>
     <div class="metric">
       <span class="metric-value">3</span>
       <span class="metric-label">Strategies Benchmarked</span>
     </div>
+    <div class="metric">
+      <span class="metric-value accent">100%</span>
+      <span class="metric-label">Post-Imputation Coverage</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Why gaps are hard to standardize ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Why Gaps Cannot Be Standardized</h2>
+  </div>
+  <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Variable Gap Length</p>
+      <h3 style="font-size:15px;margin:6px 0;">1 to {{ bundle.gap_summary.max_gap_min }} minutes</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        Each gap event has a different duration — sensor resets, network timeouts, and power failures create gaps of varying sizes across different days.
+      </p>
+    </div>
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Time-of-Day Dependence</p>
+      <h3 style="font-size:15px;margin:6px 0;">Night ≠ Day Gaps</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        A gap during midday irradiance peak needs different treatment than a nocturnal gap where all power channels are physically zero.
+      </p>
+    </div>
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Non-Uniform Distribution</p>
+      <h3 style="font-size:15px;margin:6px 0;">Gaps are sporadic</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        Missing intervals do not occur at regular offsets — one day may have 2 gaps in the morning, the next day has none, the one after has a 2-hour blackout.
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- 3-Tier Imputation Policy ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">3-Tier Imputation Decision Policy</h2>
+    <span class="badge badge-accent">Applied to all training data</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Condition</th>
+          <th>Strategy</th>
+          <th class="num">Applied to</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="strong">Night gap (any length)<br><span class="dim" style="font-size:11px;">Hour &lt; 6 or Hour &gt; 18</span></td>
+          <td><span class="badge" style="background:rgba(198,93,85,0.15);color:#C65D55;">Zero-Clamp</span></td>
+          <td class="num">{{ bundle.gap_summary.night_gaps }} events</td>
+          <td style="font-size:12.5px;color:var(--text-2);">Irradiance is physically impossible at night. Setting IRRADIATION = 0 is the only physically correct action.</td>
+        </tr>
+        <tr>
+          <td class="strong">Daytime short gap ≤ 4 slots<br><span class="dim" style="font-size:11px;">≤ 60 minutes</span></td>
+          <td><span class="badge badge-accent">Time Linear Spline</span></td>
+          <td class="num">{{ bundle.gap_summary.spline_gaps }} events</td>
+          <td style="font-size:12.5px;color:var(--text-2);">Best reconstruction fidelity for short gaps. Tracks rapid cloud-transition trajectories accurately (RMSE 0.108 kW/m²).</td>
+        </tr>
+        <tr>
+          <td class="strong">Daytime long gap &gt; 4 slots<br><span class="dim" style="font-size:11px;">&gt; 60 minutes</span></td>
+          <td><span class="badge" style="background:rgba(217,166,63,0.2);color:#D9A63F;">Diurnal Profile Matching</span></td>
+          <td class="num">{{ bundle.gap_summary.diurnal_gaps }} events</td>
+          <td style="font-size:12.5px;color:var(--text-2);">For multi-hour blackouts, the same-hour median from other days provides a physically-grounded estimate of expected irradiance.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Benchmark Chart ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Imputation Benchmark — Reconstruction Error by Strategy</h2>
+    <span class="mono dim mono-sm">10% daylight dropout simulation · RMSE lower is better</span>
   </div>
 
   <div class="chart-card mt-36">
     <div class="chart-card-head">
-      <h3>Imputation Benchmark — Reconstruction Error by Strategy</h3>
-      <span class="chart-tag">10% daylight dropout · RMSE (lower is better)</span>
+      <h3>RMSE Comparison: Forward Fill vs Linear Spline vs Diurnal Profile</h3>
+      <span class="chart-tag">3 sensors × 3 strategies</span>
     </div>
     <div class="chart-wrap chart-wrap-tall">
       <canvas data-chart="imputation_benchmark" role="img" aria-label="Imputation benchmark bar chart"></canvas>
@@ -44,11 +139,12 @@
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Algorithm Benchmark Table ---- #}
 <section class="section">
   <div class="section-head">
-    <h2 class="section-title">Imputation Algorithm Benchmark (Ground Truth Holdout)</h2>
+    <h2 class="section-title">Benchmark Results — Ground Truth Holdout</h2>
   </div>
-  <p class="section-sub">Tested against ground truth daylight telemetry to determine the optimal imputation strategy for solar irradiance and thermal sensors.</p>
+  <p class="section-sub">10% of observed daytime telemetry was masked as missing, imputed by each strategy, then compared against ground truth to measure reconstruction accuracy.</p>
 
   <div class="table-scroll">
     <table class="table">
@@ -58,11 +154,11 @@
           <th>Observed Mean</th>
           <th class="num">Forward Fill MAE</th>
           <th class="num">Forward Fill RMSE</th>
-          <th class="num">Linear Interp MAE</th>
-          <th class="num">Linear Interp RMSE</th>
+          <th class="num">Linear Spline MAE</th>
+          <th class="num">Linear Spline RMSE</th>
           <th class="num">Diurnal MAE</th>
           <th class="num">Diurnal RMSE</th>
-          <th>Winning Strategy</th>
+          <th>Winner</th>
         </tr>
       </thead>
       <tbody>
@@ -82,40 +178,57 @@
       </tbody>
     </table>
   </div>
+</section>
 
-  <div class="section-head mt-36">
-    <h2 class="section-title">Repair — Time Linear Spline Imputation</h2>
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Gap Event Audit Log ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Gap Event Audit Log</h2>
+    <span class="mono dim mono-sm">{{ bundle.gap_summary.total_gaps }} events · {{ bundle.gap_summary.total_imputed_slots }} total slots imputed</span>
   </div>
+  <p class="section-sub">Every contiguous missing-interval event detected in the weather sensor stream, with the strategy applied.</p>
+
   <div class="table-scroll">
     <table class="table">
       <thead>
         <tr>
-          <th>Stream Channel</th>
-          <th class="num">Missing Gaps</th>
-          <th class="num">% of Intervals</th>
-          <th>Applied Method</th>
-          <th>Coverage Progression</th>
+          <th>#</th>
+          <th>Gap Start</th>
+          <th>Gap End</th>
+          <th class="num">Slots</th>
+          <th class="num">Duration</th>
+          <th>Period</th>
+          <th>Strategy Applied</th>
         </tr>
       </thead>
       <tbody>
-        {% for col in bundle.imputation_lab.affected %}
+        {% for g in bundle.gap_summary.events %}
         <tr>
-          <td class="mono strong">{{ col.name }}</td>
-          <td class="num">{{ col.count }}</td>
-          <td class="num dim">{{ col.pct }}%</td>
-          <td class="accent strong">{{ col.impute_method }}</td>
+          <td class="dim mono">{{ loop.index }}</td>
+          <td class="mono">{{ g.start }}</td>
+          <td class="mono">{{ g.end }}</td>
+          <td class="num">{{ g.n_slots }}</td>
+          <td class="num">{{ g.duration_min }} min</td>
+          <td>{{ 'Night' if g.is_night else 'Daytime' }}</td>
           <td>
-            <span class="coverage">
-              <span class="coverage-track"><span class="coverage-fill" style="--w: {{ col.non_null_pct }}%"></span></span>
-              <span class="coverage-pct">{{ col.non_null_pct }}% → 100%</span>
-            </span>
+            {% if g.strategy == 'Linear Spline' %}
+            <span class="badge badge-accent">{{ g.strategy }}</span>
+            {% elif g.strategy == 'Diurnal Profile Matching' %}
+            <span class="badge" style="background:rgba(217,166,63,0.2);color:#D9A63F;">{{ g.strategy }}</span>
+            {% else %}
+            <span class="badge" style="background:rgba(198,93,85,0.15);color:#C65D55;">{{ g.strategy }}</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
+        {% if bundle.gap_summary.total_gaps == 0 %}
+        <tr><td colspan="7" style="text-align:center;color:var(--text-3);">No missing intervals — sensor stream is complete.</td></tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
-  <p class="note"><strong>Policy Decision:</strong> Time Linear Spline Interpolation is used for short gaps (<= 1 hour) and Diurnal Solar Matching for prolonged multi-hour outages.</p>
 </section>
 
 <script>

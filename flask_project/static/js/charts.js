@@ -1,220 +1,351 @@
-// SolarSense Chart.js Integration Engine (Soft Light Skin Tone Theme)
-document.addEventListener("DOMContentLoaded", () => {
-  if (!window.SOLAR_DATA) return;
-  const D = window.SOLAR_DATA;
+/**
+ * SolarSense Chart Builders
+ * Built on Chart.js 4.4.3 (loaded by base.html)
+ *
+ * All charts are driven by window.SOLAR_DATA injected by each Jinja template.
+ * Canvas elements use data-chart="<type>" to identify which builder to call.
+ */
 
-  // 1. Distribution Histograms
-  if (D.histograms) {
-    document.querySelectorAll("[data-chart='hist']").forEach(canvas => {
-      const key = canvas.getAttribute("data-key");
-      const h = D.histograms[key];
-      if (!h || !h.labels) return;
+/* ------------------------------------------------------------------ Palette */
+const PALETTE = {
+  amber:      "rgba(217, 166, 63,  1.00)",
+  amberLight: "rgba(217, 166, 63,  0.22)",
+  amberMid:   "rgba(217, 166, 63,  0.55)",
+  red:        "rgba(198,  93, 85,  0.85)",
+  redLight:   "rgba(198,  93, 85,  0.18)",
+  blue:       "rgba( 90, 152, 212, 0.85)",
+  blueLight:  "rgba( 90, 152, 212, 0.20)",
+  green:      "rgba( 93, 188, 130, 0.85)",
+  greenLight: "rgba( 93, 188, 130, 0.18)",
+  text:       getComputedStyle(document.documentElement).getPropertyValue("--text").trim()   || "#e8e3d8",
+  text2:      getComputedStyle(document.documentElement).getPropertyValue("--text-2").trim() || "#9b9488",
+  border:     getComputedStyle(document.documentElement).getPropertyValue("--border").trim() || "#2a2820",
+};
 
-      new Chart(canvas, {
-        type: "bar",
-        data: {
-          labels: h.labels,
-          datasets: [{
-            data: h.counts,
-            backgroundColor: "rgba(200, 122, 40, 0.75)",
-            hoverBackgroundColor: "#C87A28",
-            borderRadius: 3
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: "#6E5542", font: { size: 10 } } },
-            y: { grid: { color: "#E8DCcc" }, ticks: { color: "#6E5542", font: { size: 10 } } }
-          }
-        }
-      });
-    });
-  }
+/* ------------------------------------------------------------------ Defaults */
+Chart.defaults.color            = PALETTE.text2;
+Chart.defaults.font.family      = "Inter, sans-serif";
+Chart.defaults.font.size        = 11;
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.animation        = { duration: 450, easing: "easeOutQuart" };
 
-  // 2. Standardized Z-Score Charts
-  if (D.standardized) {
-    document.querySelectorAll("[data-chart='std']").forEach(canvas => {
-      const key = canvas.getAttribute("data-key");
-      const h = D.standardized[key];
-      if (!h || !h.labels) return;
+function gridOpts() {
+  return {
+    color: PALETTE.border,
+    lineWidth: 0.6,
+  };
+}
 
-      new Chart(canvas, {
-        type: "bar",
-        data: {
-          labels: h.labels,
-          datasets: [{
-            data: h.counts,
-            backgroundColor: "rgba(75, 114, 134, 0.75)",
-            hoverBackgroundColor: "#4B7286",
-            borderRadius: 3
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: "#6E5542", font: { size: 10 } } },
-            y: { grid: { color: "#E8DCcc" }, ticks: { color: "#6E5542", font: { size: 10 } } }
-          }
-        }
-      });
-    });
-  }
+function tickOpts(extra) {
+  return Object.assign({ color: PALETTE.text2, font: { size: 10 } }, extra || {});
+}
 
-  // 3. Imputation Strategy Benchmark Chart
-  const impBenchCanvas = document.querySelector("[data-chart='imputation_benchmark']");
-  if (impBenchCanvas && D.imputation_lab) {
-    const lab = D.imputation_lab;
-    new Chart(impBenchCanvas, {
-      type: "bar",
-      data: {
-        labels: lab.chart_labels,
-        datasets: [
-          {
-            label: "Forward Fill (LOCF)",
-            data: lab.chart_ffill_rmse,
-            backgroundColor: "rgba(194, 62, 52, 0.75)",
-            borderRadius: 4
-          },
-          {
-            label: "Diurnal Pattern",
-            data: lab.chart_diurnal_rmse,
-            backgroundColor: "rgba(75, 114, 134, 0.75)",
-            borderRadius: 4
-          },
-          {
-            label: "Time Linear Spline (Winner)",
-            data: lab.chart_linear_rmse,
-            backgroundColor: "#C87A28",
-            borderRadius: 4
-          }
-        ]
+/* ================================================================== BUILDERS */
+
+/* ---- Histogram (distributions & z-score) ---- */
+function buildHist(canvas, data, color) {
+  if (!data || !data.labels || !data.labels.length) return;
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.counts,
+        backgroundColor: color || PALETTE.amberLight,
+        borderColor:     color ? color.replace("0.22", "0.9") : PALETTE.amber,
+        borderWidth: 1.2,
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { tooltip: { callbacks: { title: (i) => i[0].label } } },
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts({ maxRotation: 40, font: { size: 9 } }) },
+        y: { grid: gridOpts(), ticks: tickOpts(), beginAtZero: true }
+      }
+    }
+  });
+}
+
+/* ---- Influence / Correlation Bar ---- */
+function buildInfluence(canvas, data) {
+  if (!data || !data.labels) return;
+  const colors = data.values.map(v => v >= 0 ? PALETTE.amberMid : PALETTE.redLight);
+  const borders = data.values.map(v => v >= 0 ? PALETTE.amber : PALETTE.red);
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [{ data: data.values, backgroundColor: colors, borderColor: borders, borderWidth: 1.5, borderRadius: 3 }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        tooltip: { callbacks: { label: (i) => `  r = ${i.raw.toFixed(3)}` } }
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: "#2C1E14", font: { family: "Inter", size: 11, weight: "600" } } },
-          title: { display: true, text: "Imputation Reconstruction Error (RMSE - Lower is Better)", color: "#2C1E14" }
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts(), min: -1, max: 1 },
+        y: { grid: { display: false }, ticks: tickOpts({ font: { size: 10 } }) }
+      }
+    }
+  });
+}
+
+/* ---- Imputation Benchmark Grouped Bar ---- */
+function buildImputationBenchmark(canvas, data) {
+  if (!data) return;
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.chart_labels,
+      datasets: [
+        { label: "Forward Fill",     data: data.chart_ffill_rmse,   backgroundColor: PALETTE.redLight,   borderColor: PALETTE.red,   borderWidth: 1.5, borderRadius: 3 },
+        { label: "Diurnal Pattern",  data: data.chart_diurnal_rmse, backgroundColor: PALETTE.blueLight,  borderColor: PALETTE.blue,  borderWidth: 1.5, borderRadius: 3 },
+        { label: "Linear Spline",    data: data.chart_linear_rmse,  backgroundColor: PALETTE.amberLight, borderColor: PALETTE.amber, borderWidth: 1.5, borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: "top", labels: { color: PALETTE.text2, boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (i) => `  ${i.dataset.label}: RMSE = ${i.raw}` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: tickOpts() },
+        y: { grid: gridOpts(), ticks: tickOpts(), beginAtZero: true, title: { display: true, text: "RMSE", color: PALETTE.text2 } }
+      }
+    }
+  });
+}
+
+/* ---- Diurnal Dual-Axis Line ---- */
+function buildDiurnal(canvas, data) {
+  if (!data) return;
+  new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: data.hours,
+      datasets: [
+        {
+          label: "AC Power (kW)", data: data.ac_power, yAxisID: "yPower",
+          borderColor: PALETTE.amber, backgroundColor: PALETTE.amberLight,
+          fill: true, tension: 0.4, pointRadius: 3, borderWidth: 2
         },
-        scales: {
-          x: { grid: { color: "#E8DCcc" }, ticks: { color: "#2C1E14", font: { weight: "600" } } },
-          y: {
-            grid: { color: "#E8DCcc" },
-            ticks: { color: "#6E5542" },
-            title: { display: true, text: "Root Mean Squared Error (RMSE)", color: "#6E5542" }
-          }
+        {
+          label: "DC Power (kW)", data: data.dc_power, yAxisID: "yPower",
+          borderColor: PALETTE.red, borderDash: [4, 3],
+          fill: false, tension: 0.4, pointRadius: 2, borderWidth: 1.5
+        },
+        {
+          label: "Irradiance (W/m²)", data: data.irradiation, yAxisID: "yIrrad",
+          borderColor: PALETTE.blue, fill: false,
+          tension: 0.4, pointRadius: 2, borderWidth: 1.5
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: "top", labels: { color: PALETTE.text2, boxWidth: 12, font: { size: 11 } } }
+      },
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts({ callback: v => `${v}:00` }) },
+        yPower: {
+          position: "left", grid: gridOpts(), ticks: tickOpts(),
+          title: { display: true, text: "Power (kW)", color: PALETTE.text2 }
+        },
+        yIrrad: {
+          position: "right", grid: { display: false }, ticks: tickOpts(),
+          title: { display: true, text: "Irradiance (W/m²)", color: PALETTE.text2 }
         }
       }
-    });
-  }
+    }
+  });
+}
 
-  // 4. Influence on AC Power Horizontal Bar Chart
-  const inflCanvas = document.querySelector("[data-chart='influence']");
-  if (inflCanvas && D.influence) {
-    new Chart(inflCanvas, {
-      type: "bar",
-      data: {
-        labels: D.influence.labels,
-        datasets: [{
-          data: D.influence.values,
-          backgroundColor: D.influence.values.map(v => v >= 0 ? "#C87A28" : "#C23E34"),
-          borderRadius: 4
-        }]
+/* ---- Feature Importance Horizontal Bar ---- */
+function buildImportance(canvas, data) {
+  if (!data || !data.labels) return;
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.values,
+        backgroundColor: PALETTE.amberLight,
+        borderColor: PALETTE.amber,
+        borderWidth: 1.5,
+        borderRadius: 3
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        tooltip: { callbacks: { label: (i) => `  Importance: ${i.raw.toFixed(4)}` } }
       },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: "#E8DCcc" }, ticks: { color: "#6E5542" } },
-          y: { grid: { display: false }, ticks: { color: "#2C1E14", font: { weight: "600" } } }
-        }
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts(), beginAtZero: true },
+        y: { grid: { display: false }, ticks: tickOpts() }
       }
-    });
-  }
+    }
+  });
+}
 
-  // 5. Diurnal Power vs Irradiance Dual-Axis Line Chart
-  const diurnalCanvas = document.querySelector("[data-chart='diurnal']");
-  if (diurnalCanvas && D.diurnal) {
-    const d = D.diurnal;
-    new Chart(diurnalCanvas, {
-      type: "line",
-      data: {
-        labels: d.hours.map(h => `${h}:00`),
-        datasets: [
-          {
-            label: "AC Power (kW)",
-            data: d.ac_power,
-            borderColor: "#C87A28",
-            backgroundColor: "rgba(200, 122, 40, 0.12)",
-            fill: true,
-            tension: 0.35,
-            yAxisID: "y"
-          },
-          {
-            label: "Solar Irradiance (W/m²)",
-            data: d.irradiation,
-            borderColor: "#4B7286",
-            borderDash: [5, 5],
-            tension: 0.35,
-            yAxisID: "y1"
-          }
-        ]
+/* ---- Model Comparison Bar ---- */
+function buildModelComparison(canvas, data) {
+  if (!data) return;
+  const colors = data.labels.map(l => l === data.best ? PALETTE.amber : PALETTE.amberLight);
+  const borders = data.labels.map(l => l === data.best ? PALETTE.amber : PALETTE.amberMid);
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.r2,
+        backgroundColor: colors,
+        borderColor: borders,
+        borderWidth: 1.5,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        tooltip: { callbacks: { label: (i) => `  R² = ${i.raw}` } }
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: "#2C1E14", font: { family: "Inter", size: 11, weight: "600" } } }
+      scales: {
+        x: { grid: { display: false }, ticks: tickOpts() },
+        y: { grid: gridOpts(), ticks: tickOpts(), min: 0, max: 1, title: { display: true, text: "R² Score", color: PALETTE.text2 } }
+      }
+    }
+  });
+}
+
+/* ---- Predicted vs Actual Scatter ---- */
+function buildScatter(canvas, data) {
+  if (!data || !data.actual) return;
+  const pts = data.actual.map((a, i) => ({ x: a, y: data.pred[i] }));
+  const maxVal = Math.max(...data.actual, ...data.pred);
+  new Chart(canvas, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Predicted vs Actual",
+          data: pts,
+          backgroundColor: PALETTE.amberLight,
+          borderColor: PALETTE.amber,
+          pointRadius: 3,
+          pointHoverRadius: 5,
         },
-        scales: {
-          x: { grid: { color: "#E8DCcc" }, ticks: { color: "#6E5542" } },
-          y: {
-            title: { display: true, text: "Power (kW)", color: "#C87A28" },
-            grid: { color: "#E8DCcc" },
-            ticks: { color: "#6E5542" }
-          },
-          y1: {
-            position: "right",
-            title: { display: true, text: "Irradiance (W/m²)", color: "#4B7286" },
-            grid: { display: false },
-            ticks: { color: "#4B7286" }
-          }
+        {
+          label: "Perfect Fit",
+          data: [{ x: 0, y: 0 }, { x: maxVal, y: maxVal }],
+          type: "line",
+          borderColor: PALETTE.red,
+          borderDash: [5, 4],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
         }
-      }
-    });
-  }
-
-  // 6. Feature Importance Chart
-  const impCanvas = document.querySelector("[data-chart='importance']");
-  if (impCanvas && D.importance) {
-    new Chart(impCanvas, {
-      type: "bar",
-      data: {
-        labels: D.importance.labels,
-        datasets: [{
-          label: "Relative Gini Importance",
-          data: D.importance.values,
-          backgroundColor: "#C87A28",
-          borderRadius: 4
-        }]
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: "top", labels: { color: PALETTE.text2, boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (i) => `  Actual: ${i.raw.x} kW · Pred: ${i.raw.y} kW` } }
       },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: "#E8DCcc" }, ticks: { color: "#6E5542" } },
-          y: { grid: { display: false }, ticks: { color: "#2C1E14", font: { weight: "600" } } }
-        }
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts(), title: { display: true, text: "Actual AC Power (kW)", color: PALETTE.text2 } },
+        y: { grid: gridOpts(), ticks: tickOpts(), title: { display: true, text: "Predicted AC Power (kW)", color: PALETTE.text2 } }
       }
-    });
-  }
-});
+    }
+  });
+}
+
+/* ---- IPI Inverter Bar ---- */
+function buildIpiBar(canvas, inverters) {
+  if (!inverters || !inverters.length) return;
+  const labels = inverters.map(i => i.inverter_id.substring(0, 12) + "…");
+  const values = inverters.map(i => i.ipi);
+  const colors = values.map(v => v >= 95 ? PALETTE.amberMid : (v >= 85 ? PALETTE.blueLight : PALETTE.redLight));
+  const borders = values.map(v => v >= 95 ? PALETTE.amber : (v >= 85 ? PALETTE.blue : PALETTE.red));
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: colors, borderColor: borders, borderWidth: 1.5, borderRadius: 3 }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      plugins: { tooltip: { callbacks: { label: (i) => `  IPI: ${i.raw}%` } } },
+      scales: {
+        x: { grid: gridOpts(), ticks: tickOpts(), min: 70, max: 110, title: { display: true, text: "IPI %", color: PALETTE.text2 } },
+        y: { grid: { display: false }, ticks: tickOpts({ font: { size: 9 } }) }
+      }
+    }
+  });
+}
+
+/* ================================================================== DISPATCH */
+
+function dispatch() {
+  const D = window.SOLAR_DATA || {};
+
+  document.querySelectorAll("canvas[data-chart]").forEach(canvas => {
+    const type = canvas.dataset.chart;
+    const key  = canvas.dataset.key;
+
+    switch (type) {
+
+      case "hist":
+        if (D.histograms && D.histograms[key])
+          buildHist(canvas, D.histograms[key]);
+        break;
+
+      case "std":
+        if (D.standardized && D.standardized[key])
+          buildHist(canvas, D.standardized[key], "rgba(90,152,212,0.22)");
+        break;
+
+      case "influence":
+        if (D.influence) buildInfluence(canvas, D.influence);
+        break;
+
+      case "imputation_benchmark":
+        if (D.imputation_lab) buildImputationBenchmark(canvas, D.imputation_lab);
+        break;
+
+      case "diurnal":
+        if (D.diurnal) buildDiurnal(canvas, D.diurnal);
+        break;
+
+      case "importance":
+        if (D.importance) buildImportance(canvas, D.importance);
+        break;
+
+      case "model_comparison":
+        if (D.model_comparison) buildModelComparison(canvas, D.model_comparison);
+        break;
+
+      case "scatter":
+        if (D.scatter) buildScatter(canvas, D.scatter);
+        break;
+
+      case "ipi_bar":
+        if (D.inverters) buildIpiBar(canvas, D.inverters);
+        break;
+    }
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", dispatch);
+} else {
+  dispatch();
+}

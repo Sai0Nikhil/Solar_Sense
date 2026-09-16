@@ -1,51 +1,96 @@
 {% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
 {% block content %}
 <section class="page-head">
   <p class="page-kicker">{{ step.eyebrow }}</p>
   <h1>{{ step.label }}</h1>
   <p class="page-desc">{{ step.note }}</p>
-  <p class="page-meta">Plant {{ plant_num }} · Daytime vs. Nighttime Distribution Breakdown</p>
+  <p class="page-meta">Plant {{ plant_num }} · Day vs Night Distributional Analysis</p>
 </section>
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Summary KPIs ---- #}
+<section class="section">
+  <div class="metrics metrics-rows">
+    {% for row in bundle.descriptive %}
+    {% if loop.index <= 4 %}
+    <div class="metric">
+      <span class="metric-value accent">{{ row.day_mean }}</span>
+      <span class="metric-label">{{ row.name }} (Day Mean)</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Full Statistics Table ---- #}
 <section class="section">
   <div class="section-head">
-    <h2 class="section-title">Parametric Summary by Operating Cycle</h2>
+    <h2 class="section-title">Full Distributional Statistics — 8 SCADA Channels</h2>
+    <span class="mono dim mono-sm">All rows · Day = IRRADIATION &gt; 0 or Hour 6–18</span>
   </div>
 
   <div class="table-scroll">
     <table class="table">
       <thead>
         <tr>
-          <th>Metric / Sensor Channel</th>
+          <th>Channel</th>
           <th class="num">Overall Mean</th>
-          <th class="num">Overall Std</th>
-          <th class="num">Daytime Mean</th>
-          <th class="num">Daytime Max</th>
-          <th class="num">Night Mean</th>
+          <th class="num">Std Dev</th>
           <th class="num">Min</th>
           <th class="num">Max</th>
+          <th class="num">Daylight Mean</th>
+          <th class="num">Daylight Peak</th>
+          <th class="num">Night Mean</th>
         </tr>
       </thead>
       <tbody>
-        {% for s in bundle.descriptive %}
+        {% for row in bundle.descriptive %}
         <tr>
-          <td class="strong">{{ s.name }}</td>
-          <td class="num">{{ s.overall_mean }}</td>
-          <td class="num">{{ s.overall_std }}</td>
-          <td class="num accent"><strong>{{ s.day_mean }}</strong></td>
-          <td class="num">{{ s.day_max }}</td>
-          <td class="num dim">{{ s.night_mean }}</td>
-          <td class="num">{{ s.overall_min }}</td>
-          <td class="num">{{ s.overall_max }}</td>
+          <td class="strong">{{ row.name }}</td>
+          <td class="num">{{ row.overall_mean }}</td>
+          <td class="num dim">± {{ row.overall_std }}</td>
+          <td class="num dim">{{ row.overall_min }}</td>
+          <td class="num">{{ row.overall_max }}</td>
+          <td class="num accent"><strong>{{ row.day_mean }}</strong></td>
+          <td class="num">{{ row.day_max }}</td>
+          <td class="num dim">{{ row.night_mean }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="note">Daytime hours isolate active photovoltaic generation (G > 0 or 06:00 to 18:00), preventing night zero-inflation from distorting regression scales.</p>
+  <p class="note"><strong>Why split day vs night?</strong> Solar power generation is physically zero at night. Including nocturnal rows inflates the "overall" mean downward — the daylight statistics reflect actual generation conditions.</p>
 </section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Correlation to Target ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Feature Correlation to AC Power (Target)</h2>
+    <span class="mono dim mono-sm">Pearson r — higher absolute value = stronger driver</span>
+  </div>
+  <div class="chart-card chart-card-wide">
+    <div class="chart-card-head">
+      <h3>Influence on AC Power Generation</h3>
+      <span class="chart-tag">correlation coefficient</span>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas data-chart="influence" role="img" aria-label="Influence bar chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.SOLAR_DATA = {
+    influence: {{ bundle.influence | tojson }}
+  };
+</script>
 
 {% include "_pager.html" %}
 {% endblock %}

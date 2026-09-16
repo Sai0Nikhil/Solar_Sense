@@ -3,6 +3,11 @@
 Handles multi-plant generation and weather sensor synchronization,
 diurnal cycle decomposition, inverter efficiency tracking,
 and comparative time-series imputation.
+
+Imputation policy (3-tier):
+  - Gaps ≤ 4 slots (≤ 1 h)  → Time Linear Spline Interpolation
+  - Gaps > 4 slots (> 1 h, daytime) → Diurnal Profile Matching
+  - Night gaps (any length)  → Zero-clamped (IRRADIATION physically = 0)
 """
 
 import os
@@ -30,6 +35,8 @@ STANDARDIZE_COLS = [
 ]
 
 TARGET_COL = "AC_POWER"
+
+WEATHER_IMPUTE_COLS = ["AMBIENT_TEMPERATURE", "MODULE_TEMPERATURE", "IRRADIATION"]
 
 COLUMN_META = {
     "DATE_TIME": ("Temporal", "timestamp", "15-minute interval timestamp"),
@@ -115,45 +122,143 @@ def load_raw_plant(plant_num=1, data_dir=None):
     return gen_df, wth_df
 
 
-def merge_and_enrich(gen_df, wth_df, plant_num=1):
-    merged = pd.merge(
-        gen_df, wth_df,
-        on=["DATE_TIME", "PLANT_ID"],
-        suffixes=("_GEN", "_WEATHER"),
-        how="inner"
+# ---------------------------------------------------------------------------
+# 3-Tier Imputation Engine
+# ---------------------------------------------------------------------------
+
+def impute_weather_gaps(wth_df):
+    """Apply 3-tier imputation to the weather sensor dataframe.
+
+    Returns
+    -------
+    imputed_df : pd.DataFrame
+        Complete continuous weather dataframe at 15-min cadence.
+    gap_audit : list[dict]
+        One entry per contiguous gap event with: start, end, n_slots,
+        duration_min, time_of_day, strategy_applied.
+    raw_count : int
+        Number of originally observed timestamps (before reindexing).
+    """
+    df = wth_df.sort_values("DATE_TIME").copy()
+    raw_count = len(df)
+
+    full_range = pd.date_range(
+        start=df["DATE_TIME"].min(),
+        end=df["DATE_TIME"].max(),
+        freq="15min"
     )
 
-    if "SOURCE_KEY_GEN" in merged.columns:
-        merged["SOURCE_KEY"] = merged["SOURCE_KEY_GEN"]
-    if "SOURCE_KEY_WEATHER" in merged.columns:
-        merged["WEATHER_SENSOR_KEY"] = merged["SOURCE_KEY_WEATHER"]
+    # Reindex to full continuous range (missing rows become NaN)
+    df = df.set_index("DATE_TIME").reindex(full_range)
+    df.index.name = "DATE_TIME"
 
-    if plant_num == 1:
-        merged["EFFICIENCY"] = np.where(
-            merged["DC_POWER"] > 10,
-            (merged["AC_POWER"] / (merged["DC_POWER"] / 10.0)) * 100.0,
-            np.nan
+    # Forward-fill PLANT_ID / sensor key columns (identity, not numeric)
+    for col in ["PLANT_ID"]:
+        if col in df.columns:
+            df[col] = df[col].ffill().bfill()
+
+    # Build hourly diurnal means from the *observed* (non-NaN) data
+    df["_HOUR"] = df.index.hour
+    diurnal_means = {}
+    for col in WEATHER_IMPUTE_COLS:
+        diurnal_means[col] = (
+            df[col].groupby(df["_HOUR"]).mean()
         )
-    else:
-        merged["EFFICIENCY"] = np.where(
-            merged["DC_POWER"] > 0,
-            (merged["AC_POWER"] / merged["DC_POWER"]) * 100.0,
-            np.nan
+
+    # Identify contiguous gap runs (consecutive NaN rows in IRRADIATION)
+    gap_audit = []
+    is_missing = df["IRRADIATION"].isna()
+    in_gap = False
+    gap_start = None
+
+    for ts, missing in is_missing.items():
+        if missing and not in_gap:
+            in_gap = True
+            gap_start = ts
+        elif not missing and in_gap:
+            in_gap = False
+            gap_end = ts - pd.Timedelta(minutes=15)
+            gap_slots = int((gap_end - gap_start).total_seconds() / 900) + 1
+            hour = gap_start.hour
+            is_night = not (6 <= hour <= 18)
+            strategy = (
+                "Zero-Clamp (Night)" if is_night
+                else ("Linear Spline" if gap_slots <= 4 else "Diurnal Profile Matching")
+            )
+            gap_audit.append({
+                "start": gap_start.strftime("%Y-%m-%d %H:%M"),
+                "end": gap_end.strftime("%Y-%m-%d %H:%M"),
+                "n_slots": gap_slots,
+                "duration_min": gap_slots * 15,
+                "hour": hour,
+                "is_night": is_night,
+                "strategy": strategy,
+            })
+
+    # Close open gap at end
+    if in_gap:
+        gap_end = df.index[-1]
+        gap_slots = int((gap_end - gap_start).total_seconds() / 900) + 1
+        hour = gap_start.hour
+        is_night = not (6 <= hour <= 18)
+        strategy = (
+            "Zero-Clamp (Night)" if is_night
+            else ("Linear Spline" if gap_slots <= 4 else "Diurnal Profile Matching")
         )
+        gap_audit.append({
+            "start": gap_start.strftime("%Y-%m-%d %H:%M"),
+            "end": gap_end.strftime("%Y-%m-%d %H:%M"),
+            "n_slots": gap_slots,
+            "duration_min": gap_slots * 15,
+            "hour": hour,
+            "is_night": is_night,
+            "strategy": strategy,
+        })
 
-    merged["EFFICIENCY"] = merged["EFFICIENCY"].clip(0, 100)
-    merged["TEMP_DIFF"] = merged["MODULE_TEMPERATURE"] - merged["AMBIENT_TEMPERATURE"]
-    merged["HOUR"] = merged["DATE_TIME"].dt.hour
-    merged["MINUTE"] = merged["DATE_TIME"].dt.minute
-    merged["DATE"] = merged["DATE_TIME"].dt.date
-    merged["IS_DAY"] = (merged["IRRADIATION"] > 0) | (merged["HOUR"].between(6, 18))
+    # ---- Apply imputation column by column ----
+    for col in WEATHER_IMPUTE_COLS:
+        series = df[col].copy()
+        dmeans = diurnal_means[col]
 
-    return merged
+        # Pass 1: linear spline for short gaps (≤ 4 consecutive NaN slots)
+        # We interpolate everything linearly first as a baseline
+        series_linear = series.interpolate(method="time").bfill().ffill()
+
+        # Pass 2: for long daytime gaps, override with diurnal pattern
+        # Build a mask of which NaN positions came from long-gap events
+        long_gap_mask = pd.Series(False, index=df.index)
+        for gap in gap_audit:
+            if not gap["is_night"] and gap["n_slots"] > 4:
+                long_gap_mask[gap["start"]:gap["end"]] = True
+
+        # For long daytime gaps: use diurnal mean for that hour
+        diurnal_fill = df["_HOUR"].map(dmeans)
+
+        # For night gaps: zero-clamp irradiation, use diurnal for temps
+        night_gap_mask = pd.Series(False, index=df.index)
+        for gap in gap_audit:
+            if gap["is_night"]:
+                night_gap_mask[gap["start"]:gap["end"]] = True
+
+        # Compose final series
+        final = series_linear.copy()
+        # Override long daytime gaps with diurnal
+        final[long_gap_mask & series.isna()] = diurnal_fill[long_gap_mask & series.isna()]
+        # Override night gaps
+        if col == "IRRADIATION":
+            final[night_gap_mask & series.isna()] = 0.0
+        else:
+            final[night_gap_mask & series.isna()] = diurnal_fill[night_gap_mask & series.isna()]
+
+        df[col] = final
+
+    df = df.drop(columns=["_HOUR"]).reset_index()
+    return df, gap_audit, raw_count
 
 
 def evaluate_imputation_strategies(wth_df):
     df_sorted = wth_df.sort_values("DATE_TIME").copy()
-    
+
     full_range = pd.date_range(start=df_sorted["DATE_TIME"].min(), end=df_sorted["DATE_TIME"].max(), freq="15min")
     missing_timestamps = full_range.difference(df_sorted["DATE_TIME"])
     missing_count = len(missing_timestamps)
@@ -164,7 +269,7 @@ def evaluate_imputation_strategies(wth_df):
 
     np.random.seed(42)
     mask = np.random.rand(len(df_day)) < 0.10
-    
+
     targets = ["AMBIENT_TEMPERATURE", "MODULE_TEMPERATURE", "IRRADIATION"]
     results = {}
 
@@ -172,7 +277,7 @@ def evaluate_imputation_strategies(wth_df):
         true_vals = df_day[col].values
         corrupted = true_vals.copy()
         corrupted[mask] = np.nan
-        
+
         series = pd.Series(corrupted, index=df_day["DATE_TIME"])
 
         # 1. Forward Fill
@@ -223,9 +328,49 @@ def evaluate_imputation_strategies(wth_df):
     }
 
 
+def merge_and_enrich(gen_df, wth_df, plant_num=1):
+    merged = pd.merge(
+        gen_df, wth_df,
+        on=["DATE_TIME", "PLANT_ID"],
+        suffixes=("_GEN", "_WEATHER"),
+        how="inner"
+    )
+
+    if "SOURCE_KEY_GEN" in merged.columns:
+        merged["SOURCE_KEY"] = merged["SOURCE_KEY_GEN"]
+    if "SOURCE_KEY_WEATHER" in merged.columns:
+        merged["WEATHER_SENSOR_KEY"] = merged["SOURCE_KEY_WEATHER"]
+
+    if plant_num == 1:
+        merged["EFFICIENCY"] = np.where(
+            merged["DC_POWER"] > 10,
+            (merged["AC_POWER"] / (merged["DC_POWER"] / 10.0)) * 100.0,
+            np.nan
+        )
+    else:
+        merged["EFFICIENCY"] = np.where(
+            merged["DC_POWER"] > 0,
+            (merged["AC_POWER"] / merged["DC_POWER"]) * 100.0,
+            np.nan
+        )
+
+    merged["EFFICIENCY"] = merged["EFFICIENCY"].clip(0, 100)
+    merged["TEMP_DIFF"] = merged["MODULE_TEMPERATURE"] - merged["AMBIENT_TEMPERATURE"]
+    merged["HOUR"] = merged["DATE_TIME"].dt.hour
+    merged["MINUTE"] = merged["DATE_TIME"].dt.minute
+    merged["DATE"] = merged["DATE_TIME"].dt.date
+    merged["IS_DAY"] = (merged["IRRADIATION"] > 0) | (merged["HOUR"].between(6, 18))
+
+    return merged
+
+
 def build_plant_bundle(plant_num=1, data_dir=None):
     gen_df, wth_df = load_raw_plant(plant_num, data_dir)
-    df = merge_and_enrich(gen_df, wth_df, plant_num)
+
+    # ---- Apply 3-tier imputation to weather data ----
+    wth_imputed, gap_audit, raw_wth_count = impute_weather_gaps(wth_df)
+
+    df = merge_and_enrich(gen_df, wth_imputed, plant_num)
 
     inverters = df["SOURCE_KEY"].unique()
     n_inverters = len(inverters)
@@ -248,7 +393,7 @@ def build_plant_bundle(plant_num=1, data_dir=None):
         "max_module_temp": _f(df["MODULE_TEMPERATURE"].max()),
         "max_irradiation": _f(df["IRRADIATION"].max(), 3),
         "avg_efficiency": _f(df["EFFICIENCY"].dropna().mean()),
-        "completeness": _f((len(wth_df) / 3264) * 100, 1),
+        "completeness": _f((raw_wth_count / max(len(wth_imputed), 1)) * 100, 1),
     }
 
     # Features Registry
@@ -308,7 +453,7 @@ def build_plant_bundle(plant_num=1, data_dir=None):
         inv_data = df[df["SOURCE_KEY"] == inv]
         inv_yield = float(inv_data.groupby("DATE")["DAILY_YIELD"].max().mean())
         ipi = (inv_yield / median_plant_yield * 100) if median_plant_yield > 0 else 100.0
-        
+
         inverter_stats.append({
             "inverter_id": inv,
             "avg_daily_yield": _f(inv_yield),
@@ -374,7 +519,19 @@ def build_plant_bundle(plant_num=1, data_dir=None):
         "values": [_f(v, 2) for v in infl.values]
     }
 
+    # Imputation lab benchmark (uses raw wth_df for honest benchmark)
     imputation_lab = evaluate_imputation_strategies(wth_df)
+
+    # Build gap audit summary for template
+    gap_summary = {
+        "total_gaps": len(gap_audit),
+        "spline_gaps": sum(1 for g in gap_audit if g["strategy"] == "Linear Spline"),
+        "diurnal_gaps": sum(1 for g in gap_audit if g["strategy"] == "Diurnal Profile Matching"),
+        "night_gaps": sum(1 for g in gap_audit if g["strategy"] == "Zero-Clamp (Night)"),
+        "max_gap_min": max((g["duration_min"] for g in gap_audit), default=0),
+        "total_imputed_slots": sum(g["n_slots"] for g in gap_audit),
+        "events": gap_audit[:50],  # cap at 50 for template safety
+    }
 
     return {
         "schema_ok": True,
@@ -389,7 +546,8 @@ def build_plant_bundle(plant_num=1, data_dir=None):
         "standardized": standardized,
         "heatmap": heatmap,
         "influence": influence,
-        "imputation_lab": imputation_lab
+        "imputation_lab": imputation_lab,
+        "gap_summary": gap_summary,
     }
 
 
@@ -403,3 +561,9 @@ def get_plant_bundle(plant_num=1, data_dir=None):
         else:
             _bundle_cache.move_to_end(key)
         return _bundle_cache[key]
+
+
+def invalidate_cache():
+    """Force re-computation of all bundles (call after data changes)."""
+    with _cache_lock:
+        _bundle_cache.clear()

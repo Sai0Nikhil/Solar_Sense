@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
 {% block content %}
 <section class="page-head">
   <p class="page-kicker">{{ step.eyebrow }}</p>
@@ -9,6 +11,31 @@
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Split metrics ---- #}
+<section class="section">
+  <div class="metrics">
+    <div class="metric">
+      <span class="metric-value accent">{{ "{:,}".format(mb.split.train_rows) }}</span>
+      <span class="metric-label">Training Rows (80% past)</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ "{:,}".format(mb.split.test_rows) }}</span>
+      <span class="metric-label">Sealed Holdout Rows (20% future)</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ mb.gap_stats.imputed_slots }}</span>
+      <span class="metric-label">Imputed Sensor Slots</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">3</span>
+      <span class="metric-label">Model Candidates</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Model candidates ---- #}
 <section class="section">
   <div class="section-head">
     <h2 class="section-title">The Candidates</h2>
@@ -19,10 +46,13 @@
       <thead>
         <tr>
           <th>Model Architecture</th>
-          <th>Inductive Bias & Role</th>
+          <th>Inductive Bias &amp; Role</th>
           <th>Preprocessing</th>
           <th class="num">Train Time</th>
           <th class="num">Holdout R²</th>
+          <th class="num">MAE (kW)</th>
+          <th class="num">RMSE (kW)</th>
+          <th class="num">Daylight MAPE</th>
         </tr>
       </thead>
       <tbody>
@@ -33,16 +63,47 @@
             {% if m.name == mb.best %}<span class="badge badge-accent badge-offset">Champion</span>{% endif %}
           </td>
           <td class="dim cell-role">{{ m.note }}</td>
-          <td class="dim">{{ 'z-scored' if m.needs_scaling else 'raw features' }}</td>
+          <td class="dim">{{ 'z-scored inputs' if m.needs_scaling else 'raw features' }}</td>
           <td class="num">{{ m.train_time }}s</td>
           <td class="num accent"><strong>{{ m.metrics.r2 }}</strong></td>
+          <td class="num">{{ m.metrics.mae_kw }} kW</td>
+          <td class="num">{{ m.metrics.rmse_kw }} kW</td>
+          <td class="num">{{ m.metrics.mape_pct }}%</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="note">The champion model is selected based on out-of-sample temporal holdout generalization. Full regression metrics on the next page.</p>
+  <p class="note">Champion selected by highest out-of-sample R² on the sealed temporal holdout. The test set is touched exactly once after training is complete.</p>
 </section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- R² bar chart ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Model Comparison — Holdout R²</h2>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-head">
+      <h3>R² Score by Architecture</h3>
+      <span class="chart-tag">higher is better</span>
+    </div>
+    <div class="chart-wrap" style="height:260px;">
+      <canvas data-chart="model_comparison" role="img" aria-label="Model R² comparison bar chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.SOLAR_DATA = {
+    model_comparison: {
+      labels: {{ mb.models | map(attribute='name') | list | tojson }},
+      r2: {{ mb.models | map(attribute='metrics') | map(attribute='r2') | list | tojson }},
+      best: {{ mb.best | tojson }}
+    }
+  };
+</script>
 
 {% include "_pager.html" %}
 {% endblock %}

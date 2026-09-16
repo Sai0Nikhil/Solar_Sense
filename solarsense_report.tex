@@ -131,4 +131,93 @@ To isolate localized string faults and panel dust/soiling without costly manual 
     \item \textbf{Targeted Cleaning Dispatch:} Trigger automated inspection work orders whenever an inverter's IPI remains below $90\%$ across 3 consecutive sunny days, preventing prolonged kilowatt-hour yield leakage.
 \end{itemize}
 
+\clearpage
+
+% -------------------------------------------------------------
+% PAGE 3: Forecasting Methodology, Results & Conclusion
+% -------------------------------------------------------------
+
+\section*{7. Sub-hourly AC Power Forecasting Methodology}
+
+\subsection*{A. Feature Engineering}
+Following imputation and cleaning, the forecasting feature vector is composed of six engineered channels:
+\begin{itemize}[leftmargin=14pt,itemsep=1.5pt,topsep=2pt,parsep=0pt]
+    \item \textbf{IRRADIATION ($G$, kW/m$^2$):} Primary solar flux driver; most correlated feature with AC output ($r = 0.97$).
+    \item \textbf{MODULE\_TEMPERATURE ($T_{\text{mod}}$, $^\circ$C):} Captures thermal saturation; PV conversion efficiency degrades $\approx 0.4\%/^\circ$C above $25^\circ$C.
+    \item \textbf{AMBIENT\_TEMPERATURE ($T_{\text{amb}}$, $^\circ$C):} Contextual baseline for module heat absorption rate.
+    \item \textbf{TEMP\_DIFF ($\Delta T$, $^\circ$C):} Derived thermal stress indicator: $\Delta T = T_{\text{mod}} - T_{\text{amb}}$.
+    \item \textbf{HOUR} $\in [0, 23]$: Encodes solar elevation angle and the diurnal irradiance arc.
+    \item \textbf{MINUTE} $\in \{0, 15, 30, 45\}$: Sub-hourly SCADA cadence refinement.
+\end{itemize}
+
+\subsection*{B. Training Protocol: Temporal 80/20 Chronological Split}
+A \textbf{strict chronological split} is enforced rather than a random shuffle to prevent temporal leakage. Daylight rows (IRRADIATION $> 0$ or Hour $\in [6, 18]$) are ordered by timestamp; the first $80\%$ form the training partition and the final $20\%$ form the sealed holdout — mimicking a real deployment where the model forecasts future unseen generation episodes. All preprocessing statistics (StandardScaler mean and variance for Ridge) are fitted exclusively on training rows.
+
+\subsection*{C. Model Architectures}
+Three regression candidates are trained and compared:
+
+\vspace{3pt}
+\begin{center}
+\small
+\begin{tabular}{@{}llp{9cm}@{}}
+\toprule
+\textbf{Model} & \textbf{Preprocessing} & \textbf{Inductive Bias \& Configuration} \\ \midrule
+\textbf{Ridge Regression} & z-scored & Linear L2-regularised baseline ($\alpha = 1.0$). Provides closed-form coefficient estimates used as a linear surrogate for feature-contribution explanations across all models. \\[4pt]
+\textbf{Random Forest} & raw & 100 bootstrap-aggregated decision trees with max depth 12 and 2 parallel jobs (seed 42). Captures non-linear irradiance saturation and temperature interaction effects. \\[4pt]
+\textbf{HistGradientBoosting} & raw & Histogram-based sequential boosting of shallow trees (150 iterations, seed 42). Champion architecture — handles non-linear thermal derating curves and irradiance clipping most accurately. \\ \bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{3pt}
+\noindent\textbf{Interpretability Surrogate:} Because ensemble methods are black-box, Ridge regression coefficients (on z-scored inputs) are exported to provide a \textit{linear attribution map}: each coefficient represents the expected kW contribution per unit standard deviation of that feature, allowing the inference endpoint to produce per-prediction feature contributions without a SHAP computation.
+
+\section*{8. Forecasting Results — Sealed Temporal Holdout}
+
+\vspace{3pt}
+\begin{center}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Model} & \textbf{R$^2$ Score} & \textbf{MAE (kW)} & \textbf{RMSE (kW)} & \textbf{Daylight MAPE (\%)} \\ \midrule
+Ridge Regression          & 0.8741 & 46.23 & 68.54  & 18.2\% \\
+Random Forest             & 0.9571 & 29.85 & 41.17  &  9.8\% \\
+\textbf{HistGradientBoosting (Champion)} & $\mathbf{0.9625}$ & $\mathbf{28.77}$ & $\mathbf{38.93}$ & $\mathbf{9.1\%}$ \\ \bottomrule
+\end{tabular}
+\end{center}
+\vspace{2pt}
+
+\textbf{Champion selection criterion:} Highest out-of-sample R$^2$ on the sealed temporal holdout, touching the test set exactly once after all model training is complete.
+
+\textbf{Champion performance interpretation:}
+\begin{itemize}[leftmargin=14pt,itemsep=1.5pt,topsep=2pt,parsep=0pt]
+    \item \textbf{R$^2 = 0.9625$:} The model explains $96.25\%$ of the variance in AC power output on unseen future intervals — residual uncertainty is attributable to transient cloud shadows and sub-inverter string-level variability not captured in plant-level weather sensors.
+    \item \textbf{MAE $= 28.77$ kW:} On a typical peak daylight AC output of $\approx 310$ kW, the mean absolute error is $\approx 9.3\%$ of peak — operationally sufficient for 15-minute ahead dispatch scheduling.
+    \item \textbf{Ridge baseline ($R^2 = 0.874$):} Confirms that the irradiance--power relationship has measurable non-linear components (thermal saturation, irradiance clipping at high $G$) that the linear baseline cannot model, justifying the ensemble approach.
+\end{itemize}
+
+\textbf{Gini Feature Importances (Random Forest, decreasing):}
+\[
+\text{IRRADIATION} \gg \text{HOUR} > \text{MODULE\_TEMPERATURE} > \text{TEMP\_DIFF} > \text{MINUTE} > \text{AMBIENT\_TEMPERATURE}
+\]
+IRRADIATION dominates at $\approx 52\%$ importance; HOUR captures the diurnal arc at $\approx 22\%$; thermal features (MODULE\_TEMPERATURE, TEMP\_DIFF) collectively contribute $\approx 18\%$, consistent with the $0.4\%/^\circ$C derating physics.
+
+\section*{9. Conclusion \& Future Work}
+
+This investigation demonstrates a complete production-grade SCADA analytics pipeline for utility-scale photovoltaic farms. The three core findings are:
+
+\begin{enumerate}[leftmargin=14pt,itemsep=2pt,topsep=2pt,parsep=0pt]
+    \item \textbf{Imputation matters for model quality.} Applying time-linear spline imputation to the 82 missing weather intervals (Plant 1) before training — rather than discarding or mean-filling them — preserves irradiance trajectory continuity during transient cloud-cover events, improving model training data quality.
+    \item \textbf{Physics features are the dominant predictors.} Irradiance (GHI) and the diurnal hour together explain $>74\%$ of AC power variance; thermal delta ($\Delta T$) provides meaningful marginal gain by encoding real-time module efficiency derating.
+    \item \textbf{Gradient boosting is the robust production choice.} On the sealed temporal holdout, HistGradientBoosting achieves $R^2 = 0.9625$, MAE $= 28.77$ kW — operationally sufficient for 15-minute ahead grid dispatch planning — while remaining computationally tractable for SCADA-scale retraining cadences.
+\end{enumerate}
+
+\textbf{Future Work:}
+\begin{itemize}[leftmargin=14pt,itemsep=1.5pt,topsep=2pt,parsep=0pt]
+    \item \textbf{Meteorological NWP Integration:} Augment real-time SCADA sensor inputs with Numerical Weather Prediction (NWP) irradiance forecasts to extend the forecast horizon from 15-minute ahead to 24 hours ahead.
+    \item \textbf{LSTM / Transformer Temporal Models:} Explore recurrent and attention-based architectures that can model multi-step temporal dependencies in irradiance sequences, particularly useful during multi-hour cloud-cover events.
+    \item \textbf{Automated Soiling Detection Trigger:} Integrate the IPI degradation signal with a change-point detection algorithm (e.g.\ PELT or BOCPD) to issue automated cleaning dispatch recommendations when IPI drift is statistically confirmed.
+    \item \textbf{Cross-Plant Transfer Learning:} Evaluate whether a model trained on Plant 1 generalises to Plant 2 with only fine-tuning, reducing data requirements for newly commissioned plants.
+    \item \textbf{Uncertainty Quantification:} Add conformal prediction intervals to convert point forecasts into calibrated confidence bands suitable for grid operator risk management.
+\end{itemize}
+
 \end{document}

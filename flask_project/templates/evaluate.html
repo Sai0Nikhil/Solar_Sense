@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
 {% block content %}
 <section class="page-head">
   <p class="page-kicker">{{ step.eyebrow }}</p>
@@ -9,11 +11,40 @@
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Headline metrics for champion ---- #}
+{% set champ = mb.models | selectattr('name', 'equalto', mb.best) | first %}
+<section class="section">
+  <div class="metrics metrics-rows">
+    <div class="metric">
+      <span class="metric-value accent">{{ champ.metrics.r2 }}</span>
+      <span class="metric-label">Champion R² ({{ mb.best }})</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ champ.metrics.mae_kw }} kW</span>
+      <span class="metric-label">MAE on Holdout</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ champ.metrics.rmse_kw }} kW</span>
+      <span class="metric-label">RMSE on Holdout</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ champ.metrics.mape_pct }}%</span>
+      <span class="metric-label">Daylight MAPE</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ "{:,}".format(mb.split.test_rows) }}</span>
+      <span class="metric-label">Sealed Holdout Rows</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Full metrics table ---- #}
 <section class="section">
   <div class="section-head">
-    <h2 class="section-title">Sealed Test Set Performance</h2>
+    <h2 class="section-title">Sealed Test Set Performance — All Candidates</h2>
   </div>
-
   <div class="table-scroll">
     <table class="table">
       <thead>
@@ -23,6 +54,7 @@
           <th class="num">MAE (kW)</th>
           <th class="num">RMSE (kW)</th>
           <th class="num">Daylight MAPE</th>
+          <th class="num">Train Time</th>
         </tr>
       </thead>
       <tbody>
@@ -36,6 +68,7 @@
           <td class="num">{{ m.metrics.mae_kw }} kW</td>
           <td class="num">{{ m.metrics.rmse_kw }} kW</td>
           <td class="num">{{ m.metrics.mape_pct }}%</td>
+          <td class="num dim">{{ m.train_time }}s</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -45,20 +78,94 @@
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Predicted vs Actual Scatter ---- #}
 <section class="section">
   <div class="section-head">
-    <h2 class="section-title">Feature Attribution & Permutation Importance</h2>
+    <h2 class="section-title">Predicted vs Actual AC Power — Champion Scatter</h2>
+  </div>
+  <div class="chart-card chart-card-wide">
+    <div class="chart-card-head">
+      <h3>{{ mb.best }} · Holdout Predictions</h3>
+      <span class="chart-tag">300 sampled holdout points · perfect fit = diagonal</span>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas data-chart="scatter" role="img" aria-label="Predicted vs Actual scatter plot"></canvas>
+    </div>
+  </div>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Feature Importance ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Feature Attribution &amp; Gini Importance (Random Forest)</h2>
   </div>
   <div class="chart-card">
+    <div class="chart-card-head">
+      <h3>Mean Decrease in Impurity — 6 Features</h3>
+      <span class="chart-tag">higher = more predictive power</span>
+    </div>
     <div class="chart-wrap" style="height: 300px;">
       <canvas data-chart="importance" role="img" aria-label="Feature importance bar chart"></canvas>
     </div>
   </div>
 </section>
 
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Ridge Coefficient Explanation ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Linear Surrogate — Ridge Regression Coefficients</h2>
+    <span class="mono dim mono-sm">R² = {{ mb.ridge_export.r2 }}</span>
+  </div>
+  <p class="section-sub">Ridge regression coefficients (on z-scored inputs) show the linear contribution per unit standard deviation of each feature — used as a fast interpretability surrogate for all model architectures.</p>
+
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th class="num">Coefficient (z-scored)</th>
+          <th class="num">Training Mean</th>
+          <th class="num">Training Std</th>
+          <th>Direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(mb.ridge_export.features | length) %}
+        {% set feat = mb.ridge_export.features[i] %}
+        {% set coef = mb.ridge_export.coef[i] %}
+        {% set mean = mb.ridge_export.mean[feat] %}
+        {% set std = mb.ridge_export.std[feat] %}
+        <tr>
+          <td class="strong mono">{{ feat }}</td>
+          <td class="num {{ 'accent' if coef > 0 else 'text-danger' }}"><strong>{{ coef }}</strong></td>
+          <td class="num dim">{{ mean }}</td>
+          <td class="num dim">{{ std }}</td>
+          <td>
+            {% if coef > 5 %}
+            <span class="badge badge-accent">Strong Boost</span>
+            {% elif coef > 0 %}
+            <span class="badge badge-accent" style="opacity:0.7;">Mild Boost</span>
+            {% elif coef > -5 %}
+            <span class="badge" style="background:rgba(198,93,85,0.12);color:#C65D55;opacity:0.8;">Mild Reduce</span>
+            {% else %}
+            <span class="badge" style="background:rgba(198,93,85,0.15);color:#C65D55;">Strong Reduce</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <script>
   window.SOLAR_DATA = {
-    importance: {{ mb.importance | tojson }}
+    importance: {{ mb.importance | tojson }},
+    scatter: {{ (mb.models | selectattr('name', 'equalto', mb.best) | first).scatter | tojson }}
   };
 </script>
 

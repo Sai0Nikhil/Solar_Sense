@@ -1,40 +1,102 @@
 {% extends "base.html" %}
+{% block title %}{{ step.label }} · SolarSense System{% endblock %}
+
 {% block content %}
 <section class="page-head">
   <p class="page-kicker">{{ step.eyebrow }}</p>
   <h1>{{ step.label }}</h1>
   <p class="page-desc">{{ step.note }}</p>
-  <p class="page-meta">Active Plant · Plant {{ plant_num }} · ID {{ bundle.overview.plant_id }}</p>
+  <p class="page-meta">Plant {{ plant_num }} · Active Solar Farm</p>
 </section>
 
 <div class="divider" aria-hidden="true"></div>
 
+{# ---- Plant Switcher ---- #}
 <section class="section">
   <div class="section-head">
-    <h2 class="section-title">Select Active Solar Farm Telemetry</h2>
+    <h2 class="section-title">Active Solar Farm</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <a href="{{ url_for('switch_plant', num=1) }}"
+         class="btn {{ 'btn-primary' if plant_num == 1 else 'btn-secondary' }}"
+         style="padding:6px 16px;font-size:13px;">Plant 1</a>
+      <a href="{{ url_for('switch_plant', num=2) }}"
+         class="btn {{ 'btn-primary' if plant_num == 2 else 'btn-secondary' }}"
+         style="padding:6px 16px;font-size:13px;">Plant 2</a>
+    </div>
+  </div>
+  <p class="section-sub">You are currently exploring <strong>Plant {{ plant_num }}</strong> (Plant ID: {{ bundle.overview.plant_id }}). Switch plants above to compare both solar farms.</p>
+</section>
+
+<div class="divider" aria-hidden="true"></div>
+
+{# ---- Bundled Dataset Summary ---- #}
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">Bundled SCADA Dataset — Plant {{ plant_num }}</h2>
+    <span class="mono dim mono-sm">4 CSV files · generation + weather sensor streams</span>
   </div>
 
-  <div class="card-grid">
-    <div class="card {{ 'card-active' if plant_num == 1 else '' }}" style="padding: 24px; border: {% if plant_num == 1 %}2px solid var(--accent){% else %}1px solid var(--border){% endif %};">
-      <p class="card-kicker">Solar Farm 1</p>
-      <h3 style="margin: 6px 0 10px; font-size: 17px;">Plant 1 (ID: 4135001)</h3>
-      <p style="color: var(--text-2); font-size: 13px; margin-bottom: 18px; line-height: 1.6;">
-        68,774 synchronized records across 22 string inverters. Contains 82 missing weather sensor intervals (97.49% coverage) requiring time-series imputation.
-      </p>
-      <a href="{{ url_for('switch_plant', num=1) }}" class="btn {% if plant_num == 1 %}btn-primary{% else %}btn-secondary{% endif %}">
-        {% if plant_num == 1 %}✓ Currently Active{% else %}Switch to Plant 1{% endif %}
-      </a>
+  <div class="metrics metrics-rows">
+    <div class="metric">
+      <span class="metric-value">{{ "{:,}".format(bundle.overview.total_records) }}</span>
+      <span class="metric-label">Merged SCADA Records</span>
     </div>
+    <div class="metric">
+      <span class="metric-value accent">{{ bundle.overview.n_inverters }}</span>
+      <span class="metric-label">String Inverters</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.days_span }} Days</span>
+      <span class="metric-label">Observation Window</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.start_date }}</span>
+      <span class="metric-label">Data Start</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value">{{ bundle.overview.end_date }}</span>
+      <span class="metric-label">Data End</span>
+    </div>
+    <div class="metric">
+      <span class="metric-value {{ 'text-danger' if bundle.imputation_lab.missing_timestamps_count else '' }}">
+        {{ bundle.imputation_lab.missing_timestamps_count }}
+      </span>
+      <span class="metric-label">Missing Weather Intervals</span>
+    </div>
+  </div>
 
-    <div class="card {{ 'card-active' if plant_num == 2 else '' }}" style="padding: 24px; border: {% if plant_num == 2 %}2px solid var(--accent){% else %}1px solid var(--border){% endif %};">
-      <p class="card-kicker">Solar Farm 2</p>
-      <h3 style="margin: 6px 0 10px; font-size: 17px;">Plant 2 (ID: 4136001)</h3>
-      <p style="color: var(--text-2); font-size: 13px; margin-bottom: 18px; line-height: 1.6;">
-        67,698 synchronized records across 22 string inverters. Calibrated 1:1 DC-to-AC telemetry with 99.85% sensor coverage (5 missing intervals).
+  <div class="card-grid mt-36" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Generation Data</p>
+      <h3 style="font-size:15px;margin:6px 0;">Plant_{{ plant_num }}_Generation_Data.csv</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        DC &amp; AC power, daily yield, total yield per string inverter at 15-min cadence.
       </p>
-      <a href="{{ url_for('switch_plant', num=2) }}" class="btn {% if plant_num == 2 %}btn-primary{% else %}btn-secondary{% endif %}">
-        {% if plant_num == 2 %}✓ Currently Active{% else %}Switch to Plant 2{% endif %}
-      </a>
+    </div>
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Weather Sensor</p>
+      <h3 style="font-size:15px;margin:6px 0;">Plant_{{ plant_num }}_Weather_Sensor_Data.csv</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        Irradiation (GHI), ambient temperature, module surface temperature from co-located station.
+      </p>
+    </div>
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Imputation Status</p>
+      <h3 style="font-size:15px;margin:6px 0;">{{ bundle.gap_summary.total_gaps }} Gap Events Resolved</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        {{ bundle.gap_summary.spline_gaps }} linear spline ·
+        {{ bundle.gap_summary.diurnal_gaps }} diurnal pattern ·
+        {{ bundle.gap_summary.night_gaps }} zero-clamped.
+        All gaps imputed before modeling.
+      </p>
+    </div>
+    <div class="card" style="padding: 20px 24px;">
+      <p class="card-kicker">Sensor Coverage</p>
+      <h3 style="font-size:15px;margin:6px 0;">{{ bundle.imputation_lab.coverage_pct }}% Raw → 100%</h3>
+      <p style="color:var(--text-2);font-size:12.5px;line-height:1.6;">
+        {{ bundle.imputation_lab.actual_sensor_intervals }} of {{ bundle.imputation_lab.total_expected_intervals }}
+        intervals observed; remainder imputed.
+      </p>
     </div>
   </div>
 </section>

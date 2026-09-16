@@ -129,11 +129,21 @@
 {# ------------------------------------------------ inverters --------- #}
 <section class="viz-section" id="inverters">
   <div class="section-head">
-    <h2 class="section-title">Inverter Performance Index (IPI) & Diagnostics</h2>
+    <h2 class="section-title">Inverter Performance Index (IPI) &amp; Diagnostics</h2>
   </div>
-  <p class="section-sub">Pinpoints localized string failures and panel soiling by benchmarking each inverter's average daily yield against the plant median.</p>
+  <p class="section-sub">Pinpoints localized string failures and panel soiling by benchmarking each inverter's average daily yield against the plant median. IPI &ge; 95% = Healthy · 85–94% = Moderate Loss · &lt; 85% = Fault/Soiling.</p>
 
-  <div class="table-scroll">
+  <div class="chart-card chart-card-wide mt-36">
+    <div class="chart-card-head">
+      <h3>IPI Score per Inverter — Ranked</h3>
+      <span class="chart-tag">amber = healthy · red = fault/soiling</span>
+    </div>
+    <div class="chart-wrap" style="height: {{ [bundle.inverters | length * 26, 300] | max }}px; max-height: 600px;">
+      <canvas data-chart="ipi_bar" role="img" aria-label="IPI bar chart ranked by score"></canvas>
+    </div>
+  </div>
+
+  <div class="table-scroll mt-36">
     <table class="table">
       <thead>
         <tr>
@@ -176,7 +186,8 @@
     histograms: {{ bundle.histograms | tojson }},
     standardized: {{ bundle.standardized | tojson }},
     influence: {{ bundle.influence | tojson }},
-    diurnal: {{ bundle.diurnal | tojson }}
+    diurnal: {{ bundle.diurnal | tojson }},
+    inverters: {{ bundle.inverters | tojson }}
   };
 </script>
 
