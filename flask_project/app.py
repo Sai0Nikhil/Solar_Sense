@@ -286,11 +286,11 @@ def predict_placement():
     values = {}
     selected_model = mb["best"]
 
-    if request.method == "POST":
-        selected_model = request.form.get("model_name", mb["best"])
+    if request.method == "POST" or request.args.get("sample") == "1":
+        selected_model = request.values.get("model_name", mb["best"])
         for f in mb["form_meta"]:
             name = f["name"]
-            raw_val = request.form.get(name, str(f["default"])).strip()
+            raw_val = str(request.values.get(name, f["default"])).strip()
             try:
                 values[name] = float(raw_val)
             except ValueError:
