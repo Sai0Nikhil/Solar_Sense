@@ -1,23 +1,17 @@
----
-title: SolarSense
-sdk: docker
----
-
 <div align="center">
 
 # SolarSense System
 
 **An end-to-end SCADA intelligence and machine-learning pipeline for utility-scale photovoltaic solar farms — from raw multi-rate sensor telemetry to sub-hourly AC power forecasting in one nine-stage web application.**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 [![Flask](https://img.shields.io/badge/flask-3.x-orange.svg)](https://flask.palletsprojects.com)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-≥1.4-brightgreen.svg)](https://scikit-learn.org)
 
-[🚀 **Live App**](http://127.0.0.1:5000) ·
 [📋 **Technical Report**](solarsense_report.tex) ·
 [📊 **Imputation Lab**](#the-missing-data-problem--imputation-solution) ·
-[🔍 **Telemetry Diagnostics**](#inverter-performance-index-ipi--degradation-tracking)
+[🔍 **Telemetry Diagnostics**](#inverter-performance-index-ipi--degradation-tracking) ·
+[⚡ **API Reference**](#api-reference)
 
 ![Demo: explore solar SCADA telemetry, benchmark imputations, and forecast AC power](screenshots/demo.gif)
 
@@ -36,7 +30,7 @@ Every metric, chart, and table in the application is computed live from the real
 
 ---
 
-## Live Demo & Screenshots
+## Application Walkthrough & Screenshots
 
 The animated recording above showcases the nine live pipeline stages in motion. Full page captures:
 
@@ -357,7 +351,7 @@ Solar_Sense/
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/vukkanarendhra/Solar_Sense.git
+git clone https://github.com/Sai0Nikhil/Solar_Sense.git
 cd Solar_Sense
 
 # 2. Create and activate virtual environment
@@ -465,14 +459,6 @@ Content-Type: application/json
 - **Inverter Health Benchmark**: The 90% IPI threshold is an empirical operational heuristic; dynamic seasonal thresholds can be integrated via Bayesian change-point algorithms.
 - **Intended Use**: SolarSense is designed for operational solar farm telemetry analysis, educational instruction, and demonstration — not for autonomous high-voltage grid switching without human operator oversight.
 
----
-
-## License
-
-This project is open-source software licensed under the [MIT License](LICENSE).
-
----
-
 <div align="center">
-  <sub>Built with precision as part of the 12-week Classical Machine Learning Track (KL Deemed to be University). Solar SCADA Data Engineering · Multi-rate Imputation · Inverter Diagnostics · Deployed Web Inference.</sub>
+  <sub>SolarSense Platform · Solar SCADA Data Engineering · Multi-rate Imputation · Inverter Diagnostics · Web Inference Engine</sub>
 </div>
