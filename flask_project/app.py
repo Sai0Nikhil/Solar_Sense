@@ -5,6 +5,11 @@ and machine learning power forecasting.
 """
 
 import os
+import sys
+
+# Ensure flask_project directory is on sys.path regardless of execution CWD
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 
 import eda
